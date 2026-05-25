@@ -1,9 +1,5 @@
 const { Pool, types } = require('pg');
 
-// Postgres returns arrays of custom enum types as raw literals like
-// "{cambridge,espanol}" because pg only ships parsers for built-in array
-// types. Reuse the text[] parser (OID 1009) for every enum array OID
-// (typtype='e', typarray>0) so they come back as JS arrays.
 const registerEnumArrayParsers = async () => {
   const textArrayParser = types.getTypeParser(1009);
   const { rows } = await pool.query(
@@ -13,15 +9,11 @@ const registerEnumArrayParsers = async () => {
 };
 
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT) || 5432,
-  database: process.env.DB_NAME || 'verigood_db',
-  user: process.env.DB_USER || 'verigood',
-  password: process.env.DB_PASSWORD,
+  connectionString: process.env.DATABASE_URL,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: { rejectUnauthorized: false },
 });
 
 pool.on('connect', () => {
