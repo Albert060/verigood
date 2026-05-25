@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(netstat -ano)",
+      "Bash(curl *)",
+      "Bash(powershell -NoProfile -Command \"Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | Select-Object Name,Status\")",
+      "Bash(where psql *)",
+      "Bash(where pg_ctl)",
+      "Bash(pg_isready -h localhost -p 5432)",
+      "PowerShell(Get-Process *)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(winget search *)",
+      "PowerShell(winget install *)",
+      "PowerShell($env:PGPASSWORD = 'verigood_admin_2026'; $psql = 'C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe'; & $psql -U postgres -h localhost -p 5432 -c \"CREATE ROLE verigood WITH LOGIN PASSWORD 'verigood_dev_2026';\" 2>&1; & $psql -U postgres -h localhost -p 5432 -c \"CREATE DATABASE verigood_db OWNER verigood;\" 2>&1; & $psql -U postgres -h localhost -p 5432 -c \"GRANT ALL PRIVILEGES ON DATABASE verigood_db TO verigood;\" 2>&1; & $psql -U postgres -h localhost -p 5432 -d verigood_db -c \"GRANT ALL ON SCHEMA public TO verigood;\" 2>&1)",
+      "PowerShell($bytes1 = New-Object byte[] 48; $bytes2 = New-Object byte[] 48; [System.Security.Cryptography.RandomNumberGenerator]::Create\\(\\).GetBytes\\($bytes1\\); [System.Security.Cryptography.RandomNumberGenerator]::Create\\(\\).GetBytes\\($bytes2\\); $jwt = [Convert]::ToBase64String\\($bytes1\\) -replace '/','_' -replace '\\\\+','-' -replace '=',''; $jwtR = [Convert]::ToBase64String\\($bytes2\\) -replace '/','_' -replace '\\\\+','-' -replace '=',''; Write-Output \"JWT_SECRET=$jwt\"; Write-Output \"JWT_REFRESH_SECRET=$jwtR\")",
+      "PowerShell($env:PGPASSWORD = 'verigood_dev_2026'; $psql = 'C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe'; Write-Output \"=== migrations ===\"; & $psql -U verigood -h localhost -p 5432 -d verigood_db -v ON_ERROR_STOP=1 -f \"K:\\\\Apps\\\\verigood\\\\backend\\\\src\\\\migrations\\\\001_initial_schema.sql\" 2>&1 | Select-Object -Last 30)",
+      "PowerShell($env:PGPASSWORD = 'verigood_dev_2026'; $psql = 'C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe'; Write-Output \"=== seeds ===\"; & $psql -U verigood -h localhost -p 5432 -d verigood_db -v ON_ERROR_STOP=1 -f \"K:\\\\Apps\\\\verigood\\\\backend\\\\src\\\\seeds\\\\002_demo_data.sql\" 2>&1 | Select-Object -Last 30; Write-Output \"=== verify users ===\"; & $psql -U verigood -h localhost -p 5432 -d verigood_db -c \"SELECT email, role FROM users;\" 2>&1)",
+      "Bash(node -e \"const b=require\\('bcryptjs'\\); b.hash\\('demo1234',12\\).then\\(h=>{console.log\\(h\\); console.log\\('verify:', b.compareSync\\('demo1234',h\\)\\);}\\)\")",
+      "Bash(node -e 'const b=require\\('\\\\''bcryptjs'\\\\''\\); console.log\\('\\\\''placeholder check:'\\\\'', b.compareSync\\('\\\\''demo1234'\\\\'','\\\\''$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TiGniMdSrkWJ8K1TcZaVUVS3PVUK'\\\\''\\)\\);')",
+      "PowerShell($env:PGPASSWORD = 'verigood_dev_2026'; $psql = 'C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe'; $hash = '$2a$12$QltKDRsf7vxuOB6l8hm1tuZsdzAgN8coMuUGaUQcarx4nT.hP3Fdq'; & $psql -U verigood -h localhost -p 5432 -d verigood_db -c \"UPDATE users SET password_hash = '$hash';\" 2>&1; & $psql -U verigood -h localhost -p 5432 -d verigood_db -c \"SELECT email, role, LEFT\\(password_hash, 20\\) AS hash_prefix FROM users;\" 2>&1)",
+      "Bash(grep *)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\('activeModules:', JSON.stringify\\(j.user.activeModules\\), 'isArray:', Array.isArray\\(j.user.activeModules\\)\\);}\\)\")",
+      "PowerShell(Stop-Process *)",
+      "PowerShell($frontendPath = \"K:\\\\Apps\\\\verigood\\\\frontend\"; Start-Process -FilePath \"cmd.exe\" -ArgumentList \"/c\",\"cd /d $frontendPath && npx vite > vite.log 2>&1\" -WindowStyle Hidden; Write-Output \"vite started in background\")",
+      "Bash(node *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(findstr /C:\"Local:\" \"C:\\\\Users\\\\rodri\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\K--Apps-verigood\\\\8f5c7883-9fbf-4b93-946f-9d58a4c82063\\\\tasks\\\\b1ylsu5dc.output\")",
+      "Bash(npx *)",
+      "Bash(findstr /C:\"VeriGood API running\" \"C:\\\\Users\\\\rodri\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\K--Apps-verigood\\\\8f5c7883-9fbf-4b93-946f-9d58a4c82063\\\\tasks\\\\b1ylsu5dc.output\")"
+    ]
+  }
+}

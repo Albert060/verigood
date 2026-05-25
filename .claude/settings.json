@@ -1,0 +1,15 @@
+{
+  "model": "claude-opus-4-7",
+  "skipDangerousModePermissionPrompt": false,
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-CimInstance *)",
+      "PowerShell(Get-Service *)",
+      "PowerShell(Get-Process *)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Get-Item *)",
+      "PowerShell(Test-Path *)"
+    ]
+  }
+}
