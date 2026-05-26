@@ -1,5 +1,10 @@
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore';
+import { queryClient } from './queryClient';
+
+// Una vez iniciado el logout, el interceptor NO debe volver a refrescar
+// el token ni reescribir el estado (evita la re-autenticación automática).
+let loggedOut = false;
 
 const api = axios.create({
   baseURL: '/api',
@@ -28,7 +33,8 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.data?.error === 'TOKEN_EXPIRED' && !originalRequest._retry) {
+    // Si ya estamos cerrando sesión, no intentes refrescar: deja pasar el error.
+    if (error.response?.data?.error === 'TOKEN_EXPIRED' && !originalRequest._retry && !loggedOut) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -43,7 +49,13 @@ api.interceptors.response.use(
 
       try {
         const refreshToken = useAuthStore.getState().refreshToken;
+        // Sin refresh token (ya deslogueado) no hay nada que renovar.
+        if (!refreshToken) throw new Error('NO_REFRESH_TOKEN');
+
         const { data } = await axios.post('/api/auth/refresh', { refreshToken });
+
+        // El logout pudo dispararse mientras esperábamos: no reescribas el estado.
+        if (loggedOut) return Promise.reject(error);
 
         useAuthStore.getState().setTokens(data.accessToken, data.refreshToken);
         processQueue(null, data.accessToken);
@@ -52,8 +64,7 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
-        useAuthStore.getState().logout();
-        window.location.href = '/login';
+        await doLogout();
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
@@ -63,6 +74,30 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// ── Logout centralizado ──────────────────────────────────────
+// Único punto de cierre de sesión: invalida el refresh token vigente en
+// backend, limpia estado global + persistencia + caché de React Query y
+// redirige de forma dura para descartar cualquier petición en vuelo.
+export async function doLogout() {
+  if (loggedOut) return;
+  loggedOut = true;
+
+  const { refreshToken, logout } = useAuthStore.getState();
+
+  // Invalida en backend el token rotativo ACTUAL (best-effort).
+  if (refreshToken) {
+    try {
+      await api.post('/auth/logout', { refreshToken });
+    } catch (_) {}
+  }
+
+  logout();           // limpia Zustand + localStorage (persist)
+  queryClient.clear(); // descarta toda la caché de datos del usuario
+
+  // Redirección dura: mata flags del interceptor y peticiones pendientes.
+  window.location.assign('/login');
+}
 
 // ── Auth ─────────────────────────────────────────────────────
 export const authApi = {

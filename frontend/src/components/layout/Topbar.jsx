@@ -1,15 +1,36 @@
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
-import { authApi } from '../../services/api';
+import { doLogout } from '../../services/api';
 
 export default function Topbar({ moduleLabel, moduleColor }) {
-  const { user, refreshToken, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
-  const handleLogout = async () => {
-    try { await authApi.logout(refreshToken); } catch (_) {}
-    logout();
-    navigate('/login');
+  // Cerrar el menú al hacer clic fuera o pulsar Escape.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
+  const handleLogout = () => {
+    // doLogout invalida el token en backend, limpia estado/caché y
+    // redirige a /login. No hace falta navigate manual.
+    setMenuOpen(false);
+    doLogout();
   };
 
   const initials = user?.name?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'VG';
@@ -44,23 +65,31 @@ export default function Topbar({ moduleLabel, moduleColor }) {
             {user.orgName}
           </span>
         )}
-        <div className="relative group">
-          <div className="w-10 h-10 bg-granate text-papel rounded-full flex items-center justify-center font-mono text-[13px] font-bold cursor-pointer shadow-soft">
+        <div className="relative" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            className="w-10 h-10 bg-granate text-papel rounded-full flex items-center justify-center font-mono text-[13px] font-bold cursor-pointer shadow-soft"
+          >
             {initials}
-          </div>
+          </button>
           {/* Dropdown */}
-          <div className="absolute right-0 top-12 w-56 bg-papel border border-linea shadow-card-hover rounded-xl hidden group-hover:block z-50 overflow-hidden">
-            <div className="px-4 py-3 border-b border-linea">
-              <p className="text-[14px] font-semibold text-tinta truncate">{user?.name}</p>
-              <p className="text-[12px] text-marron-soft font-mono truncate">{user?.email}</p>
+          {menuOpen && (
+            <div className="absolute right-0 top-12 w-56 bg-papel border border-linea shadow-card-hover rounded-xl z-50 overflow-hidden">
+              <div className="px-4 py-3 border-b border-linea">
+                <p className="text-[14px] font-semibold text-tinta truncate">{user?.name}</p>
+                <p className="text-[12px] text-marron-soft font-mono truncate">{user?.email}</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="w-full text-left px-4 py-3 text-[14px] text-tinta hover:bg-papel-hover transition-colors font-medium"
+              >
+                Cerrar sesión
+              </button>
             </div>
-            <button
-              onClick={handleLogout}
-              className="w-full text-left px-4 py-3 text-[14px] text-tinta hover:bg-papel-hover transition-colors font-medium"
-            >
-              Cerrar sesión
-            </button>
-          </div>
+          )}
         </div>
       </div>
     </header>
