@@ -30,7 +30,11 @@
       "Bash(findstr /C:\"VeriGood API running\" \"C:\\\\Users\\\\rodri\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\K--Apps-verigood\\\\8f5c7883-9fbf-4b93-946f-9d58a4c82063\\\\tasks\\\\b1ylsu5dc.output\")",
       "Bash(Select-String -Pattern \"^\\(backend|frontend|agentes\\)/\")",
       "Bash(Select-Object -Skip 0)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(git restore *)",
+      "Bash(mv sidebar *)",
+      "Read(//c/c/Users/alber/OneDrive/Escritorio/verigood/frontend/src/components/layout/**)",
+      "Bash(git checkout *)"
     ]
   }
 }

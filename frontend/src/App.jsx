@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from './stores/authStore';
+import { modulesApi } from './services/api';
 
 // Auth
 import LoginPage from './pages/auth/LoginPage';
@@ -49,6 +51,9 @@ import MatematicasProblems from './pages/matematicas/ProblemGenerator';
 import MatematicasPhoto from './pages/matematicas/PhotoCorrector';
 import MatematicasSeries from './pages/matematicas/ExerciseSeries';
 
+// Placeholder genérico para módulos sin layout propio todavía
+import ModulePlaceholderPage from './pages/placeholder/ModulePlaceholderPage';
+
 // Conocimiento del Medio
 import MedioLayout from './pages/medio/MedioLayout';
 import MedioHome from './pages/medio/Home';
@@ -57,11 +62,31 @@ import MedioQuizzes from './pages/medio/Questionnaires';
 import MedioDynamics from './pages/medio/STEMActivities';
 
 // ── Protected route ───────────────────────────────────────────
+// Para la comprobación de módulo activo NO usamos `user.activeModules`
+// (vive en el JWT y no se refresca al toggle desde el panel admin).
+// Usamos la misma queryKey que la sidebar y el panel: una sola fuente
+// de verdad, refresco instantáneo tras activar/desactivar.
 function ProtectedRoute({ children, roles = [], module }) {
   const { isAuthenticated, user } = useAuthStore();
+  const orgId = user?.orgId || user?.organization_id;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['modules', 'org', orgId],
+    queryFn: () => modulesApi.listOrgModules(orgId).then((r) => r.data),
+    enabled: !!orgId && !!module,
+    staleTime: 60_000,
+  });
+
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (roles.length && !roles.includes(user?.role)) return <Navigate to="/dashboard" replace />;
-  if (module && !user?.activeModules?.includes(module)) return <Navigate to="/dashboard" replace />;
+  if (roles.length && !roles.includes(user?.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  if (module) {
+    // Mientras carga, evitamos el flash de redirect.
+    if (isLoading) return null;
+    const ids = new Set((data?.modules || []).map((m) => m.id));
+    if (!ids.has(module)) return <Navigate to="/dashboard" replace />;
+  }
   return children;
 }
 
@@ -154,6 +179,21 @@ export default function App() {
           <Route path="cuestionarios" element={<MedioQuizzes />} />
           <Route path="stem" element={<MedioDynamics />} />
         </Route>
+
+        {/* Alias: la sidebar enlaza Cambridge desde /eso/cambridge */}
+        <Route path="/eso/cambridge" element={<Navigate to="/cambridge" replace />} />
+
+        {/* Módulos del catálogo sin layout propio (placeholder).
+            Cuando un módulo gane su layout real, sustituir su línea aquí. */}
+        <Route path="/primaria/ingles"     element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="ingles_primaria" /></ProtectedRoute>} />
+        <Route path="/primaria/plastica"   element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="plastica_primaria" /></ProtectedRoute>} />
+        <Route path="/primaria/musica"     element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="musica_primaria" /></ProtectedRoute>} />
+        <Route path="/primaria/religion"   element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="religion_primaria" /></ProtectedRoute>} />
+        <Route path="/primaria/ciudadania" element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="ciudadania_primaria" /></ProtectedRoute>} />
+        <Route path="/eso/ingles"          element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="ingles_eso" /></ProtectedRoute>} />
+        <Route path="/eso/geh"             element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="geo_historia_eso" /></ProtectedRoute>} />
+        <Route path="/eso/byg"             element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="bio_geo_eso" /></ProtectedRoute>} />
+        <Route path="/eso/fyq"             element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="fis_quim_eso" /></ProtectedRoute>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -74,18 +74,56 @@ const authorize = (...roles) => {
   };
 };
 
-const requireModule = (moduleName) => {
-  return (req, res, next) => {
-    const activeModules = req.user.active_modules || [];
-    if (!activeModules.includes(moduleName)) {
-      return res.status(403).json({
-        error: 'Módulo no activado',
-        module: moduleName,
-        code: 'MODULE_INACTIVE',
-      });
+// ── Cache de módulos activos por organización ─────────────────
+// Lee organization_modules con TTL 60s. Se invalida desde el controller
+// de toggle (activateModule / deactivateModule).
+const MODULE_CACHE_TTL_MS = 60_000;
+const moduleCache = new Map(); // orgId -> { modules: Set<string>, expiresAt: number }
+
+const getOrgModules = async (orgId) => {
+  const hit = moduleCache.get(orgId);
+  if (hit && hit.expiresAt > Date.now()) return hit.modules;
+
+  const { rows } = await query(
+    `SELECT module_id FROM organization_modules WHERE organization_id = $1`,
+    [orgId]
+  );
+  const set = new Set(rows.map((r) => r.module_id));
+  moduleCache.set(orgId, { modules: set, expiresAt: Date.now() + MODULE_CACHE_TTL_MS });
+  return set;
+};
+
+const invalidateOrgModules = (orgId) => {
+  moduleCache.delete(orgId);
+};
+
+const requireModule = (moduleId) => {
+  return async (req, res, next) => {
+    try {
+      const orgId = req.user?.organization_id;
+      if (!orgId) {
+        return res.status(403).json({ error: 'Sin organización', code: 'NO_ORG' });
+      }
+      const mods = await getOrgModules(orgId);
+      if (!mods.has(moduleId)) {
+        return res.status(403).json({
+          error: 'Módulo no activado',
+          module: moduleId,
+          code: 'MODULE_INACTIVE',
+        });
+      }
+      next();
+    } catch (err) {
+      console.error('requireModule error:', err);
+      res.status(500).json({ error: 'Error al verificar módulo' });
     }
-    next();
   };
 };
 
-module.exports = { authenticate, authenticateSuperadmin, authorize, requireModule };
+module.exports = {
+  authenticate,
+  authenticateSuperadmin,
+  authorize,
+  requireModule,
+  invalidateOrgModules,
+};

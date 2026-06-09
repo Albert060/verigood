@@ -1,6 +1,11 @@
--- VeriGood — Seed data demo
--- Contraseñas: demo1234 (hash bcrypt rounds=12)
--- IMPORTANT: Regenera los hashes con bcrypt antes de producción
+-- VeriGood — Seed de DESARROLLO / STAGING
+--
+-- ⚠ NO EJECUTAR EN PRODUCCIÓN ⚠
+-- deploy.sh excluye este archivo. Sólo para entornos locales y staging.
+--
+-- Contraseñas: demo1234 (hash bcrypt rounds=12).
+-- Marca las orgs con created_with_demo_data = true para poder filtrar
+-- en métricas y limpieza posterior.
 
 BEGIN;
 
@@ -17,7 +22,7 @@ VALUES (
 );
 
 -- Organization 1: Colegio San Isidro (plan colegio)
-INSERT INTO organizations (id, name, city, contact_email, plan, active_modules, is_active)
+INSERT INTO organizations (id, name, city, contact_email, plan, active_modules, is_active, created_with_demo_data, onboarding_completed_at)
 VALUES (
   'b0000000-0000-0000-0000-000000000001',
   'Colegio San Isidro',
@@ -25,7 +30,9 @@ VALUES (
   'admin@sanisidro.es',
   'colegio',
   '{cambridge,espanol,matematicas,medio}',
-  true
+  true,
+  true,
+  NOW()
 );
 
 INSERT INTO users (id, name, email, password_hash, role, organization_id)
@@ -44,7 +51,7 @@ VALUES
    'b0000000-0000-0000-0000-000000000001');
 
 -- Organization 2: IES Cervantes (plan starter — trial)
-INSERT INTO organizations (id, name, city, contact_email, plan, active_modules, is_active)
+INSERT INTO organizations (id, name, city, contact_email, plan, active_modules, is_active, created_with_demo_data, onboarding_completed_at)
 VALUES (
   'b0000000-0000-0000-0000-000000000002',
   'IES Cervantes',
@@ -52,7 +59,9 @@ VALUES (
   'admin@iescervantes.es',
   'starter',
   '{cambridge}',
-  true
+  true,
+  true,
+  NOW()
 );
 
 INSERT INTO users (id, name, email, password_hash, role, organization_id)

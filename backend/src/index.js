@@ -10,6 +10,7 @@ const { registerEnumArrayParsers } = require('./config/database');
 const authRoutes = require('./routes/auth');
 const usersRoutes = require('./routes/users');
 const organizationsRoutes = require('./routes/organizations');
+const modulesRoutes = require('./routes/modules');
 const cambridgeRoutes = require('./routes/cambridge');
 const lenguaRoutes = require('./routes/lengua');
 const matematicasRoutes = require('./routes/matematicas');
@@ -72,6 +73,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api', usersRoutes);
 app.use('/api', organizationsRoutes);
+app.use('/api', modulesRoutes);
 app.use('/api/cambridge', cambridgeRoutes);
 app.use('/api/lengua', lenguaRoutes);
 app.use('/api/matematicas', matematicasRoutes);

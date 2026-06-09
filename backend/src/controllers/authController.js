@@ -38,11 +38,13 @@ const register = async (req, res) => {
 
     await client.query('BEGIN');
 
-    // Create organization
+    // Create organization — sin módulos activos por defecto.
+    // El admin los activará desde el panel; onboarding_completed_at queda NULL
+    // para que el dashboard muestre el OnboardingHero.
     const orgResult = await client.query(
       `INSERT INTO organizations (name, city, plan, active_modules, is_active)
-       VALUES ($1, $2, $3, $4, true) RETURNING id`,
-      [orgName, orgCity || null, plan, ['cambridge']]
+       VALUES ($1, $2, $3, '{}', true) RETURNING id`,
+      [orgName, orgCity || null, plan]
     );
     const orgId = orgResult.rows[0].id;
 

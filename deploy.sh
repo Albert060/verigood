@@ -66,7 +66,12 @@ if [[ "${1:-}" != "--skip-migrate" ]]; then
   cd "$APP_DIR/backend"
   # Load env vars for psql
   set -a; source .env; set +a
-  psql "$DATABASE_URL" -f src/migrations/001_initial_schema.sql || warn "Migration may already be applied"
+  psql "$DATABASE_URL" -f src/migrations/001_initial_schema.sql || warn "001_initial_schema may already be applied"
+  psql "$DATABASE_URL" -f src/migrations/002_modules_catalog.sql || warn "002_modules_catalog may already be applied"
+  # Seed del catálogo de módulos (sistema, no demo). Idempotente.
+  psql "$DATABASE_URL" -f src/seeds/001_modules_catalog.sql || warn "001_modules_catalog seed failed"
+  # NOTA: src/seeds/dev_demo_data.sql NO se ejecuta en producción.
+  # Sólo para entornos de desarrollo / staging.
 fi
 
 # ── Build frontend ────────────────────────────────────────────

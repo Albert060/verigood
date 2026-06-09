@@ -1,16 +1,15 @@
-import { Outlet, useNavigate } from 'react-router-dom';
+import { useMemo } from 'react';
+import { Outlet } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
+import { modulesApi } from '../../services/api';
 import Topbar from '../../components/layout/Topbar';
 import Sidebar, { SidebarItem, SidebarSection } from '../../components/layout/Sidebar';
+import SidebarStage from '../../components/layout/SidebarStage';
 import DemoBanner from '../../components/ui/DemoBanner';
 
-const MODULE_ROUTES = [
-  { module: 'cambridge', to: '/cambridge', label: 'Inglés / Cambridge', icon: '✏' },
-  { module: 'espanol', to: '/lengua', label: 'Lengua Castellana', icon: '§' },
-  { module: 'matematicas', to: '/matematicas', label: 'Matemáticas', icon: '∑' },
-  { module: 'medio', to: '/medio', label: 'C. del Medio', icon: '◉' },
-  { module: 'oposiciones', to: '/oposiciones', label: 'Oposiciones', icon: '⊞' },
-];
+const STAGE_LABELS = { primaria: 'Primaria', eso: 'ESO', bachillerato: 'Bachillerato' };
+const STAGE_ORDER = ['primaria', 'eso', 'bachillerato'];
 
 const ADMIN_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: '▣', end: true },
@@ -23,17 +22,40 @@ const ADMIN_ITEMS = [
 
 export default function InstitutionalLayout() {
   const { user } = useAuthStore();
-  const navigate = useNavigate();
-  const activeModules = user?.activeModules || [];
+  const orgId = user?.orgId || user?.organization_id;
+
+  const { data } = useQuery({
+    queryKey: ['modules', 'org', orgId],
+    queryFn: () => modulesApi.listOrgModules(orgId).then((r) => r.data),
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  // Agrupar los módulos activos por etapa, sólo las que tienen contenido.
+  const stages = useMemo(() => {
+    const modules = data?.modules || [];
+    const byStage = {};
+    modules.forEach((m) => {
+      if (!byStage[m.stage]) byStage[m.stage] = [];
+      byStage[m.stage].push(m);
+    });
+    return STAGE_ORDER
+      .filter((s) => byStage[s]?.length)
+      .map((s) => ({
+        key: s,
+        label: STAGE_LABELS[s] || s,
+        modules: byStage[s].sort((a, b) => a.sort_order - b.sort_order),
+      }));
+  }, [data]);
 
   return (
     <div className="h-screen flex flex-col bg-grid-paper bg-papel">
       <Topbar />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar>
-          <SidebarSection label="HERRAMIENTAS IA" />
-          {MODULE_ROUTES.filter((m) => activeModules.includes(m.module)).map((item) => (
-            <SidebarItem key={item.to} to={item.to} label={item.label} icon={item.icon} />
+          {stages.length > 0 && <SidebarSection label="HERRAMIENTAS IA" />}
+          {stages.map((s) => (
+            <SidebarStage key={s.key} stageKey={s.key} label={s.label} modules={s.modules} />
           ))}
 
           {user?.role === 'admin_centro' && (

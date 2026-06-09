@@ -113,6 +113,16 @@ export const orgApi = {
   update: (orgId, data) => api.patch(`/organizations/${orgId}`, data),
   getStats: (orgId) => api.get(`/organizations/${orgId}/stats`),
   updateModules: (orgId, modules) => api.patch(`/organizations/${orgId}/modules`, { activeModules: modules }),
+  getOnboardingState: (orgId) => api.get(`/organizations/${orgId}/onboarding-state`),
+  completeOnboarding: (orgId) => api.post(`/organizations/${orgId}/onboarding-state/complete`),
+};
+
+// ── Modules (catálogo + activación por organización) ─────────
+export const modulesApi = {
+  listCatalog: () => api.get('/modules'),
+  listOrgModules: (orgId) => api.get(`/organizations/${orgId}/modules`),
+  activate: (orgId, moduleId) => api.post(`/organizations/${orgId}/modules/${moduleId}/activate`),
+  deactivate: (orgId, moduleId) => api.delete(`/organizations/${orgId}/modules/${moduleId}`),
 };
 
 // ── Users ────────────────────────────────────────────────────

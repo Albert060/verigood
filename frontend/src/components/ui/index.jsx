@@ -77,9 +77,12 @@ export function Badge({ children, variant = 'active', className = '' }) {
 }
 
 // ── Toggle ────────────────────────────────────────────────────
-export function Toggle({ on, onChange }) {
+export function Toggle({ on, onChange, disabled = false }) {
   return (
-    <div className={`toggle-track ${on ? 'on' : ''}`} onClick={() => onChange(!on)}>
+    <div
+      className={`toggle-track ${on ? 'on' : ''} ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
+      onClick={() => !disabled && onChange(!on)}
+    >
       <div className="toggle-thumb" />
     </div>
   );
