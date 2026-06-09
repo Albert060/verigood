@@ -9,8 +9,15 @@ const STAGE_ORDER = ['primaria', 'eso', 'bachillerato'];
 const CATEGORY_LABELS = {
   asignatura: 'Asignaturas',
   preparacion_examen: 'Preparación de exámenes',
+  religion_valores: 'Religión y valores',
+  accion_tutorial: 'Acción tutorial',
 };
-const CATEGORY_ORDER = ['asignatura', 'preparacion_examen'];
+const CATEGORY_ORDER = [
+  'asignatura',
+  'preparacion_examen',
+  'religion_valores',
+  'accion_tutorial',
+];
 
 export default function InstitutionalModules() {
   const { user } = useAuthStore();

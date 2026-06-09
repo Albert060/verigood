@@ -65,6 +65,14 @@ El modelo de negocio es institucional: el colegio contrata un plan, activa módu
 
 ```
 verigood/
+├── agentes/                            # Perfiles de agente para el flujo de desarrollo
+│   ├── README.md
+│   ├── arquitecto-software.md
+│   ├── desarrollador.md
+│   ├── auditor.md
+│   ├── tester.md
+│   └── documentador.md
+│
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx                     # Rutas y ProtectedRoute
@@ -74,12 +82,14 @@ verigood/
 │   │   ├── services/
 │   │   │   └── api.js                  # Axios + interceptor JWT
 │   │   ├── components/
-│   │   │   ├── ui/                     # Button, Card, Input, Modal, Badge, DemoBanner
-│   │   │   └── layout/                 # Sidebar, Topbar
+│   │   │   ├── ui/                     # Button, Card, Input, Modal, Badge, EmptyState
+│   │   │   ├── onboarding/             # OnboardingHero (bienvenida 3 CTAs)
+│   │   │   └── layout/                 # Sidebar, SidebarStage, Topbar
 │   │   └── pages/
 │   │       ├── auth/                   # LoginPage, RegisterPage
 │   │       ├── institutional/          # Dashboard, Users, Modules, Courses,
 │   │       │                           # Resources, Stats, Billing
+│   │       ├── placeholder/            # ModulePlaceholderPage (módulos sin layout)
 │   │       ├── cambridge/              # CambridgeLayout, Home, ExamGenerator,
 │   │       │                           # OcrCorrector, DynamicsGenerator,
 │   │       │                           # PresentationGenerator, ExamsList
@@ -115,10 +125,11 @@ verigood/
 │   │       └── mockService.js          # Respuestas mock para DEMO_MODE
 │   ├── migrations/
 │   │   ├── 001_initial_schema.sql      # 15 tablas + ENUMs + triggers
+│   │   ├── 002_modules_catalog.sql     # tablas modules + organization_modules + onboarding
 │   │   └── run.js                      # Runner con control de versiones
 │   ├── seeds/
-│   │   ├── 001_modules.sql             # 4 módulos base
-│   │   └── 002_demo_data.sql           # Datos y usuarios de demo
+│   │   ├── 001_modules_catalog.sql     # SISTEMA — catálogo cerrado de módulos
+│   │   └── dev_demo_data.sql           # DEMO — datos y usuarios de prueba
 │   ├── Dockerfile                      # Producción
 │   └── Dockerfile.local                # Dev con nodemon + auto-migración
 │
@@ -135,12 +146,42 @@ verigood/
 
 ## Módulos disponibles
 
-| Módulo | Estado | Descripción |
-|--------|--------|-------------|
-| `cambridge` | ✅ Implementado | Cambridge English A1–C2 — 4 agentes IA |
-| `espanol` | 🔜 Pendiente | Lengua española |
-| `matematicas` | 🔜 Pendiente | Matemáticas |
-| `oposiciones` | 🔜 Pendiente | Preparación de oposiciones |
+Los módulos viven en un **catálogo cerrado** (tabla `modules` + pivote `organization_modules`). Cada colegio activa/desactiva desde el panel de administración.
+
+**Primaria:**
+
+| ID | Nombre | Estado |
+|----|--------|--------|
+| `matematicas_primaria` | Matemáticas | 🔜 Placeholder |
+| `lengua_primaria` | Lengua castellana y literatura | 🔜 Placeholder |
+| `ingles_primaria` | Inglés | 🔜 Placeholder |
+| `medio_primaria` | Conocimiento del medio natural, social y cultural | 🔜 Placeholder |
+| `plastica_primaria` | Plástica | 🔜 Placeholder |
+| `ed_fisica_primaria` | Educación física | 🔜 Placeholder |
+| `musica_primaria` | Música | 🔜 Placeholder |
+| `ed_artistica_primaria` | Educación artística | 🔜 Placeholder |
+| `religion_primaria` | Religión | 🔜 Placeholder |
+| `ciudadania_primaria` | Ed. Ciudadanía | 🔜 Placeholder |
+
+**ESO:**
+
+| ID | Nombre | Estado |
+|----|--------|--------|
+| `lengua_eso` | Lengua castellana y literatura | 🔜 Placeholder |
+| `matematicas_eso` | Matemáticas | 🔜 Placeholder |
+| `ingles_eso` | Inglés | 🔜 Placeholder |
+| `cambridge` | Cambridge | ✅ Implementado — 4 agentes IA |
+| `geo_historia_eso` | Geografía e Historia | 🔜 Placeholder |
+| `ed_fisica_eso` | Educación física | 🔜 Placeholder |
+| `bio_geo_eso` | Biología y Geología | 🔜 Placeholder |
+| `tecno_digital_eso` | Tecnología y digitalización | 🔜 Placeholder |
+| `fis_quim_eso` | Física y Química | 🔜 Placeholder |
+| `epva_eso` | Educación plástica, visual y audiovisual | 🔜 Placeholder |
+| `religion_eso` | Religión | 🔜 Placeholder |
+| `valores_eticos_eso` | Educación en valores éticos | 🔜 Placeholder |
+| `tutorias_eso` | Tutorías | 🔜 Placeholder |
+
+Los módulos en estado "Placeholder" están registrados en el catálogo y se pueden activar por organización, pero su pantalla aún no está construida: renderizan `ModulePlaceholderPage` hasta que se desarrolle su layout. Bachillerato queda fuera del Fase 1 (roadmap).
 
 ### Módulo Cambridge — 4 agentes
 
@@ -201,9 +242,10 @@ npm install
 
 # 2. Configurar base de datos
 createdb verigood_local
-psql verigood_local < backend/migrations/001_initial_schema.sql
-psql verigood_local < backend/seeds/001_modules.sql
-psql verigood_local < backend/seeds/002_demo_data.sql
+psql verigood_local < backend/src/migrations/001_initial_schema.sql
+psql verigood_local < backend/src/migrations/002_modules_catalog.sql
+psql verigood_local < backend/src/seeds/001_modules_catalog.sql   # SISTEMA
+psql verigood_local < backend/src/seeds/dev_demo_data.sql         # DEMO
 
 # 3. Configurar variables de entorno
 cp .env.example .env.local
@@ -250,14 +292,15 @@ Con `DEMO_MODE=true` la plataforma funciona completamente sin ninguna clave de A
 
 ## Base de datos
 
-15 tablas principales con arquitectura multi-tenant:
+Arquitectura multi-tenant. Las migraciones se ejecutan en orden (`001_initial_schema.sql`, `002_modules_catalog.sql`) mediante `backend/migrations/run.js`, que mantiene `schema_migrations` para evitar re-ejecuciones. Tablas principales:
 
 ```
-organizations          → Colegio raíz (organization_id presente en toda la BD)
+organizations          → Colegio raíz (organization_id en toda la BD)
+                         + onboarding_completed_at, created_with_demo_data
 users                  → Profesores y admins
 subscriptions          → Plan activo por organización
-modules                → Catálogo de módulos disponibles
-organization_modules   → Módulos activados por organización
+modules                → Catálogo cerrado de módulos (sistema, mismo en prod)
+organization_modules   → Pivote: módulos activos por organización
 courses                → Asignaturas / cursos
 groups                 → Grupos dentro de un curso
 group_professors       → Relación N:M profesores-grupos
@@ -271,7 +314,6 @@ usage_logs             → Registro de uso para analytics
 refresh_tokens         → Tokens de refresco activos
 ```
 
-Las migraciones se ejecutan de forma secuencial mediante `backend/migrations/run.js`, que mantiene una tabla `schema_migrations` para evitar re-ejecuciones.
 
 ---
 
@@ -287,7 +329,12 @@ Base URL: `https://verigood.com/api` (producción) · `http://localhost:3001/api
 | POST | `/auth/logout` | Cerrar sesión |
 | GET | `/auth/me` | Usuario actual con suscripción |
 | GET | `/organizations/:id` | Datos de la organización |
+| GET | `/modules` | Catálogo global de módulos |
 | GET | `/organizations/:id/modules` | Módulos activados |
+| POST | `/organizations/:id/modules/:moduleId/activate` | Activar módulo |
+| DELETE | `/organizations/:id/modules/:moduleId` | Desactivar módulo |
+| GET | `/organizations/:id/onboarding-state` | Estado del onboarding |
+| POST | `/organizations/:id/onboarding-state/complete` | Marcar onboarding completado |
 | GET | `/users` | Lista de usuarios paginada |
 | POST | `/cambridge/exams/generate` | Generar examen Cambridge |
 | GET | `/cambridge/exams` | Listar exámenes guardados |
@@ -379,12 +426,20 @@ Disponibles tras ejecutar el seed de demo con `DEMO_MODE=true`:
 
 ---
 
+## Flujo de desarrollo con agentes
+
+El directorio `agentes/` documenta cinco perfiles de agente que se aplican en secuencia para cada feature: **arquitecto → desarrollador → auditor → tester → documentador**. Ver `agentes/README.md` para el detalle de cada rol y cuándo saltar pasos (bugs, refactors, etc.).
+
+---
+
 ## Roadmap
 
-**Módulos pendientes:**
-- Español / Lengua
-- Matemáticas
-- Oposiciones
+**Layouts de módulos pendientes** (catálogo ya creado, falta UI propia):
+- Primaria: Inglés, Plástica, Música, Religión, Ed. Ciudadanía
+- ESO: Inglés, Geografía e Historia, Biología y Geología, Física y Química
+
+**Etapas futuras:**
+- Bachillerato (Fase 2)
 
 **Funcionalidades pendientes:**
 - Exportación de exámenes a PDF con formato oficial Cambridge

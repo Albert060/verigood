@@ -28,21 +28,31 @@ verigood/
 ├── nginx.conf                # reverse proxy, SSL, rate limiting
 ├── deploy.sh                 # script de despliegue VPS
 │
+├── agentes/                  # Agentes especializados de desarrollo (docs md)
+│   ├── README.md             # Flujo: arquitecto → dev → auditor → tester → documentador
+│   ├── arquitecto-software.md
+│   ├── desarrollador.md
+│   ├── auditor.md
+│   ├── tester.md
+│   └── documentador.md
+│
 ├── backend/
 │   └── src/
 │       ├── index.js          # Express app, middlewares, rutas
 │       ├── config/
 │       │   └── database.js   # pg Pool, helper query()
 │       ├── middleware/
-│       │   └── auth.js       # authenticate, authorize, requireModule
+│       │   └── auth.js       # authenticate, authorize, requireModule (lee organization_modules)
 │       ├── controllers/
 │       │   ├── authController.js
 │       │   ├── usersController.js
+│       │   ├── modulesController.js      # catálogo, activación, onboarding-state
 │       │   └── organizationsController.js
 │       ├── routes/
 │       │   ├── auth.js
 │       │   ├── users.js
 │       │   ├── organizations.js
+│       │   ├── modules.js                # catálogo + toggle + onboarding
 │       │   ├── cambridge.js
 │       │   ├── lengua.js
 │       │   ├── matematicas.js
@@ -57,9 +67,11 @@ verigood/
 │       │   ├── lenguaService.js
 │       │   └── matematicasService.js
 │       ├── migrations/
-│       │   └── 001_initial_schema.sql
+│       │   ├── 001_initial_schema.sql
+│       │   └── 002_modules_catalog.sql   # tablas modules + organization_modules + onboarding
 │       └── seeds/
-│           └── 002_demo_data.sql         # admin@verigood.com / demo1234
+│           ├── 001_modules_catalog.sql   # SISTEMA — catálogo cerrado de módulos (también en prod)
+│           └── dev_demo_data.sql         # DEMO — admin@verigood.com / demo1234
 │
 └── frontend/
     └── src/
@@ -71,15 +83,21 @@ verigood/
         ├── services/
         │   └── api.js                    # Axios + interceptor JWT refresh
         ├── components/
-        │   ├── ui/index.jsx              # Button, Card, TagCloud, ProgressBar, etc.
+        │   ├── ui/
+        │   │   ├── index.jsx             # Button, Card, TagCloud, ProgressBar, etc.
+        │   │   └── EmptyState.jsx        # estado vacío reutilizable
+        │   ├── onboarding/
+        │   │   └── OnboardingHero.jsx    # hero de bienvenida con 3 CTAs
         │   └── layout/
         │       ├── Topbar.jsx
-        │       └── Sidebar.jsx
+        │       ├── Sidebar.jsx
+        │       └── SidebarStage.jsx      # agrupación por etapa (Primaria / ESO)
         └── pages/
             ├── auth/                     # LoginPage, RegisterPage
             ├── landing/                  # LandingPage (pública, marketing)
             ├── superadmin/               # Dashboard, Organizations, Billing, System
             ├── institutional/            # Dashboard, Users, Modules, Stats, Billing
+            ├── placeholder/              # ModulePlaceholderPage (módulos sin layout propio)
             ├── cambridge/                # Home, ExamGenerator, ExamsList, OcrCorrector,
             │                             # DynamicsGenerator, PresentationGenerator
             ├── lengua/                   # Home, ExerciseGenerator, EssayCorrector,
@@ -106,14 +124,55 @@ El middleware `requireModule(name)` comprueba `organization.active_modules[]` en
 
 ## Módulos
 
-Cada módulo se activa/desactiva por organización desde el panel admin. Nombres internos:
+Los módulos viven en un **catálogo cerrado** (tabla `modules`, seed `001_modules_catalog.sql`).
+Se activan por organización vía `organization_modules` (pivote). El antiguo `organizations.active_modules[]` (ENUM array) queda DEPRECATED y se elimina en migración 003.
 
-| Módulo | Nombre interno | Ruta frontend |
-|--------|---------------|---------------|
-| Inglés / Cambridge | `cambridge` | `/cambridge/*` |
-| Lengua Castellana | `espanol` | `/lengua/*` |
-| Matemáticas | `matematicas` | `/matematicas/*` |
-| C. del Medio | `medio` | `/medio/*` |
+### Catálogo Fase 1
+
+**Primaria** (`stage = 'primaria'`):
+
+| ID | Nombre | Categoría | Ruta |
+|----|--------|-----------|------|
+| `matematicas_primaria` | Matemáticas | asignatura | `/primaria/matematicas` |
+| `lengua_primaria` | Lengua castellana y literatura | asignatura | `/primaria/lengua` |
+| `ingles_primaria` | Inglés | asignatura | `/primaria/ingles` |
+| `medio_primaria` | Conocimiento del medio natural, social y cultural | asignatura | `/primaria/medio` |
+| `plastica_primaria` | Plástica | asignatura | `/primaria/plastica` |
+| `ed_fisica_primaria` | Educación física | asignatura | `/primaria/ed-fisica` |
+| `musica_primaria` | Música | asignatura | `/primaria/musica` |
+| `ed_artistica_primaria` | Educación artística | asignatura | `/primaria/ed-artistica` |
+| `religion_primaria` | Religión | asignatura | `/primaria/religion` |
+| `ciudadania_primaria` | Ed. Ciudadanía | asignatura | `/primaria/ciudadania` |
+
+> `ed_artistica_primaria` (LOMLOE: paraguas que engloba Plástica + Música) coexiste con `plastica_primaria` y `musica_primaria`. El centro elige granularidad al activar.
+
+**ESO** (`stage = 'eso'`):
+
+| ID | Nombre | Categoría | Ruta |
+|----|--------|-----------|------|
+| `lengua_eso` | Lengua castellana y literatura | asignatura | `/eso/lengua` |
+| `matematicas_eso` | Matemáticas | asignatura | `/eso/matematicas` |
+| `ingles_eso` | Inglés | asignatura | `/eso/ingles` |
+| `cambridge` | Cambridge | preparacion_examen | `/eso/cambridge` → `/cambridge` |
+| `geo_historia_eso` | Geografía e Historia | asignatura | `/eso/geh` |
+| `ed_fisica_eso` | Educación física | asignatura | `/eso/ed-fisica` |
+| `bio_geo_eso` | Biología y Geología | asignatura | `/eso/byg` |
+| `tecno_digital_eso` | Tecnología y digitalización | asignatura | `/eso/tecno-digital` |
+| `fis_quim_eso` | Física y Química | asignatura | `/eso/fyq` |
+| `epva_eso` | Educación plástica, visual y audiovisual | asignatura | `/eso/epva` |
+| `religion_eso` | Religión | religion_valores | `/eso/religion` |
+| `valores_eticos_eso` | Educación en valores éticos | religion_valores | `/eso/valores-eticos` |
+| `tutorias_eso` | Tutorías | accion_tutorial | `/eso/tutorias` |
+
+**Categorías** (`modules.category`): `asignatura`, `preparacion_examen`, `religion_valores`, `accion_tutorial`. Es un dominio abierto (`VARCHAR`); añadir más sólo requiere actualizar `CATEGORY_LABELS`/`CATEGORY_ORDER` en `Modules.jsx`.
+
+Sólo `cambridge` tiene layout propio. El resto renderizan `ModulePlaceholderPage` hasta que se construya su layout. Las etapas vacías (sin módulos activos) se ocultan en la sidebar.
+
+Para añadir un módulo nuevo: (1) insertar fila en el seed `001_modules_catalog.sql`, (2) añadir su `<Route>` placeholder en `App.jsx`, (3) si usa un `icon` nuevo, mapearlo en `ICON_GLYPHS` de `SidebarStage.jsx`. Sin cambios de esquema ni de controlador.
+
+### Módulos legacy (en vías de rediseño)
+
+Las rutas `/lengua`, `/matematicas`, `/medio` siguen montadas en `App.jsx` y siguen usando los IDs antiguos (`espanol`, `matematicas`, `medio`) que **no están en el catálogo nuevo** — quedarán inalcanzables hasta que se decida su mapeo al catálogo Fase 1.
 
 ---
 
@@ -126,6 +185,16 @@ POST /api/auth/login
 POST /api/auth/refresh
 POST /api/auth/logout
 GET  /api/auth/me
+```
+
+### Módulos (catálogo + activación)
+```
+GET    /api/modules                                          # catálogo global
+GET    /api/organizations/:orgId/modules                     # módulos activos de la org
+POST   /api/organizations/:orgId/modules/:moduleId/activate  # admin_centro|superadmin
+DELETE /api/organizations/:orgId/modules/:moduleId           # admin_centro|superadmin
+GET    /api/organizations/:orgId/onboarding-state
+POST   /api/organizations/:orgId/onboarding-state/complete   # admin_centro|superadmin
 ```
 
 ### Cambridge
@@ -221,11 +290,15 @@ npm run dev:backend
 # Sólo frontend (puerto 5173, proxy /api → 3001)
 npm run dev:frontend
 
-# Migraciones
+# Migraciones (orden estricto)
 psql $DATABASE_URL -f backend/src/migrations/001_initial_schema.sql
+psql $DATABASE_URL -f backend/src/migrations/002_modules_catalog.sql
 
-# Seeds (datos de demo)
-psql $DATABASE_URL -f backend/src/seeds/002_demo_data.sql
+# Seed de SISTEMA (también en producción) — catálogo de módulos
+psql $DATABASE_URL -f backend/src/seeds/001_modules_catalog.sql
+
+# Seed de DEMO (sólo dev) — usuarios y datos de prueba
+psql $DATABASE_URL -f backend/src/seeds/dev_demo_data.sql
 # → admin@verigood.com / demo1234
 # → profesor@verigood.com / demo1234
 ```
@@ -304,25 +377,36 @@ const { mutate, isPending } = useMutation({
   <InstitutionalUsers />
 </ProtectedRoute>
 
-// Por módulo activo
+// Por módulo activo — consulta organization_modules vía React Query
+// (NO usa user.activeModules del JWT, que se queda stale tras toggles)
 <ProtectedRoute module="cambridge">
   <CambridgeLayout />
 </ProtectedRoute>
 ```
+
+### Flujo de trabajo con agentes
+
+`/agentes` contiene 5 perfiles de agente especializado. Para nuevas funcionalidades:
+`arquitecto-software → desarrollador → auditor → tester → documentador`.
+Ver `agentes/README.md` para los detalles y cuándo saltar pasos.
 
 ---
 
 ## Base de datos — tablas principales
 
 ```sql
-organizations   -- colegios/academias (multi-tenant)
-users           -- superadmin | admin_centro | profesor
-refresh_tokens  -- rotating tokens con expiración
-exams           -- exámenes generados (Cambridge)
-exam_questions  -- banco de preguntas (BD híbrida)
-exam_attempts   -- intentos de corrección OCR
-resources       -- biblioteca de recursos por módulo
-usage_logs      -- registro de consumo IA por org/usuario
+organizations         -- colegios/academias (multi-tenant)
+                      --   + onboarding_completed_at, created_with_demo_data
+                      --   + active_modules[] DEPRECATED (eliminar en migración 003)
+users                 -- superadmin | admin_centro | profesor
+refresh_tokens        -- rotating tokens con expiración
+modules               -- catálogo cerrado (id, name, stage, category, route_prefix...)
+organization_modules  -- pivote: qué módulos tiene activa cada org
+exams                 -- exámenes generados (Cambridge)
+exam_questions        -- banco de preguntas (BD híbrida)
+exam_attempts         -- intentos de corrección OCR
+resources             -- biblioteca de recursos por módulo
+usage_logs            -- registro de consumo IA por org/usuario
 ```
 
 ---
@@ -361,3 +445,5 @@ SSL con Let's Encrypt: `certbot --nginx -d verigood.es -d www.verigood.es`
 - El Vite dev server hace proxy de `/api/*` → `localhost:3001` (configurado en `frontend/vite.config.js`).
 - `parseJSON()` en `claudeService.js` maneja respuestas malformadas de la IA (bloques markdown, trailing commas, JSON anidado en texto).
 - Las rutas del frontend usan español: `/lengua/ejercicios`, `/lengua/redaccion`, `/matematicas/problemas`, `/medio/fichas`, etc.
+- **Módulos**: la fuente de verdad para "qué tiene activo una org" es la tabla `organization_modules`. El array `organizations.active_modules` y el ENUM `module_type` están deprecated. No leer ni escribir el campo legacy desde código nuevo.
+- **Onboarding**: una org sin `onboarding_completed_at` ve el `OnboardingHero` en el dashboard institucional con 3 CTAs (activar módulos, invitar profesores, cargar datos demo). La sidebar oculta etapas sin módulos activos. Estado de la sidebar expandida/contraída por etapa: `localStorage`.

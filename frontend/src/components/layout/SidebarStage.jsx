@@ -33,6 +33,14 @@ const ICON_GLYPHS = {
   globe: '◐',
   leaf: '✿',
   atom: '⊕',
+  calculator: '∑',
+  type: '¶',
+  activity: '⚯',
+  cpu: '⌨',
+  cross: '✚',
+  scale: '⚖',
+  compass: '⌖',
+  earth: '◍',
 };
 
 function glyph(icon) {

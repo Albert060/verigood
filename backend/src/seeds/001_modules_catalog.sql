@@ -34,6 +34,33 @@ ON CONFLICT (id) DO UPDATE SET
   route_prefix = EXCLUDED.route_prefix,
   sort_order   = EXCLUDED.sort_order;
 
+-- ── AMPLIACIÓN FASE 1.1 — asignaturas troncales y específicas LOMLOE ───────────
+-- Aditivo: no toca activaciones existentes ni los módulos del bloque anterior.
+-- Categorías nuevas: 'religion_valores' y 'accion_tutorial'.
+INSERT INTO modules (id, name, stage, category, icon, route_prefix, sort_order) VALUES
+  -- ── PRIMARIA (ampliación) ──
+  ('matematicas_primaria',  'Matemáticas',                                       'primaria', 'asignatura',       'calculator', '/primaria/matematicas',   5),
+  ('lengua_primaria',       'Lengua castellana y literatura',                    'primaria', 'asignatura',       'type',       '/primaria/lengua',        7),
+  ('medio_primaria',        'Conocimiento del medio natural, social y cultural', 'primaria', 'asignatura',       'earth',      '/primaria/medio',        15),
+  ('ed_fisica_primaria',    'Educación física',                                  'primaria', 'asignatura',       'activity',   '/primaria/ed-fisica',    25),
+  ('ed_artistica_primaria', 'Educación artística',                               'primaria', 'asignatura',       'palette',    '/primaria/ed-artistica', 35),
+  -- ── ESO (ampliación) ──
+  ('lengua_eso',            'Lengua castellana y literatura',                    'eso',      'asignatura',       'type',       '/eso/lengua',             5),
+  ('matematicas_eso',       'Matemáticas',                                       'eso',      'asignatura',       'calculator', '/eso/matematicas',        7),
+  ('ed_fisica_eso',         'Educación física',                                  'eso',      'asignatura',       'activity',   '/eso/ed-fisica',         25),
+  ('tecno_digital_eso',     'Tecnología y digitalización',                       'eso',      'asignatura',       'cpu',        '/eso/tecno-digital',     35),
+  ('epva_eso',              'Educación plástica, visual y audiovisual',          'eso',      'asignatura',       'palette',    '/eso/epva',              45),
+  ('religion_eso',          'Religión',                                          'eso',      'religion_valores', 'cross',      '/eso/religion',          60),
+  ('valores_eticos_eso',    'Educación en valores éticos',                       'eso',      'religion_valores', 'scale',      '/eso/valores-eticos',    65),
+  ('tutorias_eso',          'Tutorías',                                          'eso',      'accion_tutorial',  'compass',    '/eso/tutorias',          80)
+ON CONFLICT (id) DO UPDATE SET
+  name         = EXCLUDED.name,
+  stage        = EXCLUDED.stage,
+  category     = EXCLUDED.category,
+  icon         = EXCLUDED.icon,
+  route_prefix = EXCLUDED.route_prefix,
+  sort_order   = EXCLUDED.sort_order;
+
 -- ── Backfill: migrar organizations.active_modules[] → organization_modules ─────
 -- Solo se mapea el enum legacy 'cambridge' al catálogo nuevo (mismo id).
 -- Los enums legacy ('espanol', 'matematicas', 'medio', 'oposiciones') no tienen
