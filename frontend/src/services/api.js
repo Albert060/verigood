@@ -125,6 +125,13 @@ export const modulesApi = {
   deactivate: (orgId, moduleId) => api.delete(`/organizations/${orgId}/modules/${moduleId}`),
 };
 
+// ── Module tools (catálogo de herramientas + ejecución) ──────
+export const moduleToolsApi = {
+  list: (moduleId) => api.get(`/modules/${moduleId}/tools`),
+  run: (moduleId, toolKey, input) =>
+    api.post(`/modules/${moduleId}/tools/${toolKey}/run`, { input }, { timeout: 90000 }),
+};
+
 // ── Users ────────────────────────────────────────────────────
 export const usersApi = {
   getAll: (orgId, params) => api.get(`/organizations/${orgId}/users`, { params }),

@@ -54,6 +54,11 @@ import MatematicasSeries from './pages/matematicas/ExerciseSeries';
 // Placeholder genérico para módulos sin layout propio todavía
 import ModulePlaceholderPage from './pages/placeholder/ModulePlaceholderPage';
 
+// Layout/páginas genéricas para módulos con tools del catálogo nuevo
+import ModuleLayout from './pages/module/ModuleLayout';
+import ModuleHome from './pages/module/ModuleHome';
+import ToolPage from './pages/module/ToolPage';
+
 // Conocimiento del Medio
 import MedioLayout from './pages/medio/MedioLayout';
 import MedioHome from './pages/medio/Home';
@@ -185,28 +190,64 @@ export default function App() {
 
         {/* Módulos del catálogo sin layout propio (placeholder).
             Cuando un módulo gane su layout real, sustituir su línea aquí. */}
-        <Route path="/primaria/ingles"        element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="ingles_primaria" /></ProtectedRoute>} />
-        <Route path="/primaria/plastica"      element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="plastica_primaria" /></ProtectedRoute>} />
-        <Route path="/primaria/musica"        element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="musica_primaria" /></ProtectedRoute>} />
-        <Route path="/primaria/religion"      element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="religion_primaria" /></ProtectedRoute>} />
-        <Route path="/primaria/ciudadania"    element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="ciudadania_primaria" /></ProtectedRoute>} />
-        <Route path="/primaria/matematicas"   element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="matematicas_primaria" /></ProtectedRoute>} />
-        <Route path="/primaria/lengua"        element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="lengua_primaria" /></ProtectedRoute>} />
-        <Route path="/primaria/medio"         element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="medio_primaria" /></ProtectedRoute>} />
-        <Route path="/primaria/ed-fisica"     element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="ed_fisica_primaria" /></ProtectedRoute>} />
-        <Route path="/primaria/ed-artistica"  element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="ed_artistica_primaria" /></ProtectedRoute>} />
-        <Route path="/eso/ingles"             element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="ingles_eso" /></ProtectedRoute>} />
-        <Route path="/eso/geh"                element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="geo_historia_eso" /></ProtectedRoute>} />
-        <Route path="/eso/byg"                element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="bio_geo_eso" /></ProtectedRoute>} />
-        <Route path="/eso/fyq"                element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="fis_quim_eso" /></ProtectedRoute>} />
-        <Route path="/eso/lengua"             element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="lengua_eso" /></ProtectedRoute>} />
-        <Route path="/eso/matematicas"        element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="matematicas_eso" /></ProtectedRoute>} />
-        <Route path="/eso/ed-fisica"          element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="ed_fisica_eso" /></ProtectedRoute>} />
-        <Route path="/eso/tecno-digital"      element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="tecno_digital_eso" /></ProtectedRoute>} />
-        <Route path="/eso/epva"               element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="epva_eso" /></ProtectedRoute>} />
-        <Route path="/eso/religion"           element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="religion_eso" /></ProtectedRoute>} />
-        <Route path="/eso/valores-eticos"     element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="valores_eticos_eso" /></ProtectedRoute>} />
-        <Route path="/eso/tutorias"           element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="tutorias_eso" /></ProtectedRoute>} />
+        {/* Módulos con tools del catálogo nuevo → ModuleLayout genérico.
+            Cada uno expone una landing (ModuleHome) y una sub-ruta :toolKey
+            renderizada por ToolPage. La protección por módulo activo la hace
+            el propio backend en cada /run; aquí solo guardamos por rol. */}
+        <Route path="/primaria/ingles"     element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="ingles_primaria" /></ProtectedRoute>}>
+          <Route index element={<ModuleHome />} />
+          <Route path=":toolKey" element={<ToolPage />} />
+        </Route>
+        <Route path="/primaria/plastica"   element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="plastica_primaria" /></ProtectedRoute>}>
+          <Route index element={<ModuleHome />} />
+          <Route path=":toolKey" element={<ToolPage />} />
+        </Route>
+        <Route path="/primaria/musica"     element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="musica_primaria" /></ProtectedRoute>}>
+          <Route index element={<ModuleHome />} />
+          <Route path=":toolKey" element={<ToolPage />} />
+        </Route>
+        <Route path="/primaria/religion"   element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="religion_primaria" /></ProtectedRoute>}>
+          <Route index element={<ModuleHome />} />
+          <Route path=":toolKey" element={<ToolPage />} />
+        </Route>
+        <Route path="/primaria/ciudadania" element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="ciudadania_primaria" /></ProtectedRoute>}>
+          <Route index element={<ModuleHome />} />
+          <Route path=":toolKey" element={<ToolPage />} />
+        </Route>
+        <Route path="/eso/ingles"          element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="ingles_eso" /></ProtectedRoute>}>
+          <Route index element={<ModuleHome />} />
+          <Route path=":toolKey" element={<ToolPage />} />
+        </Route>
+        <Route path="/eso/geh"             element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="geo_historia_eso" /></ProtectedRoute>}>
+          <Route index element={<ModuleHome />} />
+          <Route path=":toolKey" element={<ToolPage />} />
+        </Route>
+        <Route path="/eso/byg"             element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="bio_geo_eso" /></ProtectedRoute>}>
+          <Route index element={<ModuleHome />} />
+          <Route path=":toolKey" element={<ToolPage />} />
+        </Route>
+        <Route path="/eso/fyq"             element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="fis_quim_eso" /></ProtectedRoute>}>
+          <Route index element={<ModuleHome />} />
+          <Route path=":toolKey" element={<ToolPage />} />
+        </Route>
+        <Route path="/eso/religion"        element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="religion_eso" /></ProtectedRoute>}>
+          <Route index element={<ModuleHome />} />
+          <Route path=":toolKey" element={<ToolPage />} />
+        </Route>
+
+        {/* Módulos sin tools todavía → placeholder. */}
+        <Route path="/primaria/matematicas"  element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="matematicas_primaria" /></ProtectedRoute>} />
+        <Route path="/primaria/lengua"       element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="lengua_primaria" /></ProtectedRoute>} />
+        <Route path="/primaria/medio"        element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="medio_primaria" /></ProtectedRoute>} />
+        <Route path="/primaria/ed-fisica"    element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="ed_fisica_primaria" /></ProtectedRoute>} />
+        <Route path="/primaria/ed-artistica" element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="ed_artistica_primaria" /></ProtectedRoute>} />
+        <Route path="/eso/lengua"            element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="lengua_eso" /></ProtectedRoute>} />
+        <Route path="/eso/matematicas"       element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="matematicas_eso" /></ProtectedRoute>} />
+        <Route path="/eso/ed-fisica"         element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="ed_fisica_eso" /></ProtectedRoute>} />
+        <Route path="/eso/tecno-digital"     element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="tecno_digital_eso" /></ProtectedRoute>} />
+        <Route path="/eso/epva"              element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="epva_eso" /></ProtectedRoute>} />
+        <Route path="/eso/valores-eticos"    element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="valores_eticos_eso" /></ProtectedRoute>} />
+        <Route path="/eso/tutorias"          element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModulePlaceholderPage moduleId="tutorias_eso" /></ProtectedRoute>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

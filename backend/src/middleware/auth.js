@@ -120,10 +120,41 @@ const requireModule = (moduleId) => {
   };
 };
 
+// requireModuleActive — variante paramétrica que lee el moduleId de req.params.
+// Útil para endpoints genéricos como /api/modules/:moduleId/tools/:toolKey/run
+// donde el módulo a comprobar no se conoce en tiempo de registro de la ruta.
+const requireModuleActive = async (req, res, next) => {
+  try {
+    const orgId = req.user?.organization_id;
+    const moduleId = req.params?.moduleId;
+    if (!orgId) {
+      return res.status(403).json({ error: 'Sin organización', code: 'NO_ORG' });
+    }
+    if (!moduleId) {
+      return res.status(400).json({ error: 'moduleId requerido', code: 'NO_MODULE_PARAM' });
+    }
+    // superadmin atraviesa la comprobación (acceso global).
+    if (req.user.role === 'superadmin') return next();
+    const mods = await getOrgModules(orgId);
+    if (!mods.has(moduleId)) {
+      return res.status(403).json({
+        error: 'Módulo no activado',
+        module: moduleId,
+        code: 'MODULE_INACTIVE',
+      });
+    }
+    next();
+  } catch (err) {
+    console.error('requireModuleActive error:', err);
+    res.status(500).json({ error: 'Error al verificar módulo' });
+  }
+};
+
 module.exports = {
   authenticate,
   authenticateSuperadmin,
   authorize,
   requireModule,
+  requireModuleActive,
   invalidateOrgModules,
 };

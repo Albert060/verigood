@@ -7,10 +7,12 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 
 const { registerEnumArrayParsers } = require('./config/database');
+const { checkToolsConsistency } = require('./services/tools/consistencyCheck');
 const authRoutes = require('./routes/auth');
 const usersRoutes = require('./routes/users');
 const organizationsRoutes = require('./routes/organizations');
 const modulesRoutes = require('./routes/modules');
+const moduleToolsRoutes = require('./routes/moduleTools');
 const cambridgeRoutes = require('./routes/cambridge');
 const lenguaRoutes = require('./routes/lengua');
 const matematicasRoutes = require('./routes/matematicas');
@@ -63,6 +65,8 @@ app.use('/api/cambridge', aiLimiter);
 app.use('/api/lengua', aiLimiter);
 app.use('/api/matematicas', aiLimiter);
 app.use('/api/medio', aiLimiter);
+// Las ejecuciones de herramientas también consumen IA: mismo límite.
+app.use(/^\/api\/modules\/[^/]+\/tools\/[^/]+\/run$/, aiLimiter);
 
 // ── Health check ─────────────────────────────────────────────
 app.get('/health', (req, res) => {
@@ -74,6 +78,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api', usersRoutes);
 app.use('/api', organizationsRoutes);
 app.use('/api', modulesRoutes);
+app.use('/api', moduleToolsRoutes);
 app.use('/api/cambridge', cambridgeRoutes);
 app.use('/api/lengua', lenguaRoutes);
 app.use('/api/matematicas', matematicasRoutes);
@@ -104,6 +109,8 @@ registerEnumArrayParsers()
   .finally(() => {
     app.listen(PORT, () => {
       console.log(`\n🚀 VeriGood API running on port ${PORT} [${process.env.NODE_ENV}]\n`);
+      // Comprobación de coherencia BD ↔ código (no bloqueante).
+      checkToolsConsistency();
     });
   });
 

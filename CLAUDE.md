@@ -197,6 +197,12 @@ GET    /api/organizations/:orgId/onboarding-state
 POST   /api/organizations/:orgId/onboarding-state/complete   # admin_centro|superadmin
 ```
 
+### Herramientas de módulo (catálogo declarativo + dispatcher genérico)
+```
+GET  /api/modules/:moduleId/tools                            # herramientas vinculadas
+POST /api/modules/:moduleId/tools/:toolKey/run               # ejecutar (requireModuleActive)
+```
+
 ### Cambridge
 ```
 POST /api/cambridge/exams/generate     # hybrid DB+AI exam generation
@@ -383,6 +389,38 @@ const { mutate, isPending } = useMutation({
   <CambridgeLayout />
 </ProtectedRoute>
 ```
+
+### Sistema de herramientas (`module_tools`) — añadir una tool nueva en 3 pasos
+
+El catálogo de herramientas es declarativo en BD (`module_tools` + `module_tool_bindings`). El backend tiene un único dispatcher (`POST /api/modules/:moduleId/tools/:toolKey/run`) y el frontend un layout y form genéricos (`ModuleLayout` + `DynamicForm`). Para añadir una herramienta nueva basta con:
+
+1. **Seed** — añadir fila en `backend/src/seeds/002_module_tools.sql`:
+   ```sql
+   INSERT INTO module_tools (key, name, description, output_kind, input_schema, sort_order) VALUES
+     ('miclave.minueva', 'Mi herramienta', 'Descripción.', 'text',
+      '{"fields":[{"key":"x","label":"X","type":"text","required":true}]}'::jsonb, 10);
+   INSERT INTO module_tool_bindings (module_id, tool_key, sort_order) VALUES
+     ('algun_modulo_id', 'miclave.minueva', 10);
+   ```
+   `output_kind` ∈ { `text` | `exercise_set` | `rubric` | `timeline` | `quiz` | `commentary` }.
+2. **Handler** — añadir función en `backend/src/services/tools/<modulo>.js`:
+   ```js
+   exports.minueva = async (input, ctx) => {
+     const text = await callClaude({ system: '...', messages: '...', model: 'haiku' });
+     return { output_kind: 'text', output: text };
+   };
+   ```
+   Registrar en `backend/src/services/tools/index.js`:
+   ```js
+   'miclave.minueva': miModulo.minueva,
+   ```
+3. **Renderer (opcional)** — solo si el `output_kind` no existe aún. Crear `frontend/src/components/tools/results/<Kind>Result.jsx` y mapearlo en `ResultRenderer.jsx`. Si reusas un kind existente, NO hay que tocar nada en frontend.
+
+Reiniciar el backend: la comprobación de consistencia (`services/tools/consistencyCheck.js`) avisa si hay discrepancia BD ↔ código.
+
+### Captura de consumo IA por tool
+
+`runWithUsageCapture` (en `claudeService.js`) usa `AsyncLocalStorage` para sumar `input_tokens` + `output_tokens` de todas las llamadas a `callClaude` que un handler haga durante una petición. El dispatcher persiste el resultado en `usage_logs.tokens_used` y deja el desglose en `metadata` (`input_tokens`, `output_tokens`, `ai_calls`, `models`). Compatible con handlers que hagan varias llamadas a Claude — se suman automáticamente.
 
 ### Flujo de trabajo con agentes
 
