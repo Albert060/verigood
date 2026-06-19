@@ -3,6 +3,7 @@ const toolsRegistry = require('../services/tools');
 const { runWithUsageCapture } = require('../services/claudeService');
 const { aiAvailable } = require('../utils/aiAvailable');
 const demoFixtures = require('../services/tools/demoFixtures');
+const { notify, TYPES: NOTIF_TYPES } = require('../services/notifyService');
 
 // GET /api/modules/:moduleId/tools
 // Lista las herramientas vinculadas al módulo, en orden.
@@ -255,6 +256,17 @@ const run = async (req, res, next) => {
         input,
         userId: ctx.userId,
         orgId:  ctx.orgId,
+      });
+
+      // Notificación in-app al profesor para que pueda volver a su recurso.
+      await notify({
+        userId: ctx.userId,
+        organizationId: ctx.orgId,
+        type: NOTIF_TYPES.TOOL_GENERATED,
+        title: `Recurso generado: ${toolName}`,
+        body: 'Tu nuevo recurso ya está disponible en la biblioteca del centro.',
+        link: '/dashboard/resources',
+        metadata: { moduleId, toolKey, kind: result.output_kind },
       });
     }
 

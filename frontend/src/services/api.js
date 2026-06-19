@@ -132,6 +132,15 @@ export const moduleToolsApi = {
     api.post(`/modules/${moduleId}/tools/${toolKey}/run`, { input }, { timeout: 90000 }),
 };
 
+// ── Notifications (in-app) ───────────────────────────────────
+export const notificationsApi = {
+  list:          (params) => api.get('/notifications', { params }),
+  unreadCount:   () => api.get('/notifications/unread-count'),
+  markRead:      (id) => api.post(`/notifications/${id}/read`),
+  markAllRead:   () => api.post('/notifications/read-all'),
+  remove:        (id) => api.delete(`/notifications/${id}`),
+};
+
 // ── Library (biblioteca unificada de outputs) ────────────────
 export const libraryApi = {
   list:   (params) => api.get('/library/items', { params }),

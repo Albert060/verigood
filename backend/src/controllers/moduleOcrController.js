@@ -1,6 +1,7 @@
 const { query } = require('../config/database');
 const { getPublicConfig, isEnabled } = require('../services/ocrSubjects');
 const { processSubjectExam } = require('../services/ocrSubjectCorrectorService');
+const { notify, TYPES: NOTIF_TYPES } = require('../services/notifyService');
 
 // GET /api/modules/:moduleId/ocr/config
 // Devuelve la config pública del corrector OCR para que el frontend pinte el
@@ -64,6 +65,17 @@ const correctOcr = async (req, res) => {
     } catch (logErr) {
       console.warn('usage_logs insert failed (non-fatal):', logErr.message);
     }
+
+    // Notificar al profesor de que la corrección está lista.
+    await notify({
+      userId: req.user.id,
+      organizationId: req.user.organization_id,
+      type: NOTIF_TYPES.OCR_COMPLETED,
+      title: `Corrección lista: ${result.subjectLabel || 'examen'}`,
+      body: `Puntuación: ${result.totalScore ?? '—'}/${result.maxScore ?? 10} · ${result.grade || ''}`.trim(),
+      link: `/dashboard/resources`,
+      metadata: { moduleId, score: result.totalScore, grade: result.grade },
+    });
 
     res.json(result);
   } catch (err) {

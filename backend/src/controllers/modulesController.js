@@ -1,5 +1,6 @@
 const { query } = require('../config/database');
 const { invalidateOrgModules } = require('../middleware/auth');
+const { notifyRole, TYPES } = require('../services/notifyService');
 
 // GET /api/modules — catálogo público
 const listCatalog = async (req, res) => {
@@ -64,6 +65,20 @@ const activateModule = async (req, res) => {
     );
 
     invalidateOrgModules(orgId);
+
+    // Notificar a todos los profesores del centro de que tienen un módulo nuevo.
+    const modName = await query(`SELECT name, route_prefix FROM modules WHERE id = $1`, [moduleId]);
+    const m = modName.rows[0] || {};
+    await notifyRole({
+      organizationId: orgId,
+      role: 'profesor',
+      type: TYPES.MODULE_ACTIVATED,
+      title: `Nuevo módulo disponible: ${m.name || moduleId}`,
+      body: 'El admin del centro ha activado este módulo. Ya puedes acceder a sus herramientas.',
+      link: m.route_prefix || '/dashboard',
+      metadata: { moduleId },
+    });
+
     res.json({ ok: true, moduleId });
   } catch (err) {
     console.error('activateModule error:', err);
@@ -86,6 +101,19 @@ const deactivateModule = async (req, res) => {
     );
 
     invalidateOrgModules(orgId);
+
+    const modName = await query(`SELECT name FROM modules WHERE id = $1`, [moduleId]);
+    const m = modName.rows[0] || {};
+    await notifyRole({
+      organizationId: orgId,
+      role: 'profesor',
+      type: TYPES.MODULE_DEACTIVATED,
+      title: `Módulo desactivado: ${m.name || moduleId}`,
+      body: 'El admin del centro ha desactivado este módulo.',
+      link: '/dashboard',
+      metadata: { moduleId },
+    });
+
     res.json({ ok: true, moduleId });
   } catch (err) {
     console.error('deactivateModule error:', err);

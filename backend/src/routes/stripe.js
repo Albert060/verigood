@@ -2,6 +2,7 @@ const express = require('express');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { authenticate } = require('../middleware/auth');
 const { query } = require('../config/database');
+const { notifyRole, TYPES: NOTIF_TYPES } = require('../services/notifyService');
 
 const router = express.Router();
 
@@ -252,6 +253,34 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
            WHERE id = $3`,
           [plan, session.customer, orgId]
         );
+        await notifyRole({
+          organizationId: orgId,
+          role: 'admin_centro',
+          type: NOTIF_TYPES.INVOICE_PAID,
+          title: `Plan ${PLANS[plan]?.name || plan} activado`,
+          body: 'Tu suscripción está activa. Ya puedes acceder a todas las funcionalidades del plan.',
+          link: '/dashboard/billing',
+          metadata: { plan, sessionId: session.id },
+        });
+        break;
+      }
+      case 'invoice.paid': {
+        const invoice = event.data.object;
+        const { rows } = await query(
+          `SELECT id FROM organizations WHERE stripe_customer_id = $1`,
+          [invoice.customer]
+        );
+        if (rows[0]) {
+          await notifyRole({
+            organizationId: rows[0].id,
+            role: 'admin_centro',
+            type: NOTIF_TYPES.INVOICE_PAID,
+            title: `Factura ${invoice.number || ''} pagada`,
+            body: `Importe: ${((invoice.amount_paid || 0) / 100).toLocaleString('es-ES')} €`,
+            link: '/dashboard/billing',
+            metadata: { invoiceId: invoice.id, number: invoice.number },
+          });
+        }
         break;
       }
       case 'customer.subscription.deleted': {

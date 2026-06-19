@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { doLogout } from '../../services/api';
+import NotificationBell from './NotificationBell';
 
 export default function Topbar({ moduleLabel, moduleColor }) {
   const { user } = useAuthStore();
@@ -65,6 +66,7 @@ export default function Topbar({ moduleLabel, moduleColor }) {
             {user.orgName}
           </span>
         )}
+        <NotificationBell />
         <div className="relative" ref={menuRef}>
           <button
             type="button"

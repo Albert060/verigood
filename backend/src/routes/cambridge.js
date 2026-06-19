@@ -6,6 +6,7 @@ const { processExamImage } = require('../services/ocrCorrectorService');
 const { generateDynamics } = require('../services/dynamicsService');
 const { generatePresentation } = require('../services/presentationsService');
 const { query } = require('../config/database');
+const { notify, notifyRole, TYPES: NOTIF_TYPES } = require('../services/notifyService');
 
 const router = express.Router();
 
@@ -67,6 +68,15 @@ router.post('/exams/save', authenticate, requireModule('cambridge'), async (req,
   try {
     const { exam, title } = req.body;
     const id = await saveExam({ exam, title, teacherId: req.user.id, orgId: req.user.organization_id });
+    await notify({
+      userId: req.user.id,
+      organizationId: req.user.organization_id,
+      type: NOTIF_TYPES.EXAM_SAVED,
+      title: 'Examen guardado en la biblioteca',
+      body: title || `${exam?.level || 'Cambridge'} — ${exam?.topic || 'General'}`,
+      link: `/cambridge/exams/${id}`,
+      metadata: { examId: id, level: exam?.level, topic: exam?.topic },
+    });
     res.json({ id });
   } catch (err) {
     res.status(500).json({ error: 'Error al guardar el examen' });
@@ -160,6 +170,16 @@ router.post('/ocr/correct', authenticate, requireModule('cambridge'), upload.sin
     });
 
     await logUsage(req.user.id, req.user.organization_id, 'cambridge', 'ocr_correct', 800);
+
+    await notify({
+      userId: req.user.id,
+      organizationId: req.user.organization_id,
+      type: NOTIF_TYPES.OCR_COMPLETED,
+      title: `Corrección Cambridge ${certification} ${level}`,
+      body: `Puntuación: ${result.totalScore ?? '—'}/${result.maxScore ?? 10}`,
+      link: '/cambridge/ocr',
+      metadata: { certification, level, score: result.totalScore },
+    });
 
     res.json(result);
   } catch (err) {

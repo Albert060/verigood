@@ -15,6 +15,7 @@ Monorepo npm workspaces: `/frontend` (React + Vite) + `/backend` (Node + Express
 | OCR | Google Cloud Vision API |
 | Pagos | Stripe (checkout sessions, customer portal, webhooks, facturas oficiales) |
 | PDF | PDFKit — renderers propios por output_kind |
+| Tests | Jest (backend) + Vitest (frontend) + Playwright (e2e) |
 | Deploy | Nginx + PM2 + VPS Madrid |
 
 ---
@@ -53,6 +54,7 @@ verigood/
 │       │   ├── moduleToolsController.js      # dispatcher tools + auto-persistencia en biblioteca
 │       │   ├── moduleOcrController.js        # config + corrección OCR genérica por asignatura
 │       │   ├── libraryController.js          # CRUD library_items
+│       │   ├── notificationsController.js    # CRUD notifications + unread-count
 │       │   └── organizationsController.js
 │       ├── routes/
 │       │   ├── auth.js
@@ -62,6 +64,7 @@ verigood/
 │       │   ├── moduleTools.js                # GET tools + POST run (dispatcher)
 │       │   ├── moduleOcr.js                  # GET config + POST correct (multer)
 │       │   ├── library.js                    # GET/POST/DELETE library_items
+│       │   ├── notifications.js              # GET/POST/DELETE notifications
 │       │   ├── cambridge.js                  # 4 agentes + GET/:id + DELETE/:id
 │       │   ├── lengua.js                     # legacy
 │       │   ├── matematicas.js                # legacy
@@ -74,6 +77,7 @@ verigood/
 │       │   ├── ocrCorrectorService.js        # Google Vision + Claude Haiku (Cambridge)
 │       │   ├── ocrSubjectCorrectorService.js # OCR genérico para asignaturas
 │       │   ├── ocrSubjects.js                # config declarativa de qué módulos tienen OCR
+│       │   ├── notifyService.js              # helper notify() / notifyRole() best-effort
 │       │   ├── dynamicsService.js
 │       │   ├── presentationsService.js
 │       │   ├── lenguaService.js              # legacy
@@ -107,7 +111,8 @@ verigood/
 │       │   ├── 001_initial_schema.sql
 │       │   ├── 002_modules_catalog.sql       # tablas modules + organization_modules + onboarding
 │       │   ├── 003_module_tools.sql          # tablas module_tools + module_tool_bindings
-│       │   └── 004_library_items.sql         # tabla library_items (biblioteca unificada)
+│       │   ├── 004_library_items.sql         # tabla library_items (biblioteca unificada)
+│       │   └── 005_notifications.sql         # tabla notifications (in-app)
 │       └── seeds/
 │           ├── 001_modules_catalog.sql       # SISTEMA — catálogo cerrado de módulos
 │           ├── 002_module_tools.sql          # SISTEMA — 56 tools + bindings
@@ -141,7 +146,8 @@ verigood/
         │   ├── onboarding/
         │   │   └── OnboardingHero.jsx
         │   └── layout/
-        │       ├── Topbar.jsx
+        │       ├── Topbar.jsx               # incluye NotificationBell
+        │       ├── NotificationBell.jsx     # campana con badge + dropdown + polling 30s
         │       ├── Sidebar.jsx
         │       └── SidebarStage.jsx
         └── pages/
@@ -417,6 +423,124 @@ Si falsea, el sistema entra en **modo demo controlado**:
 
 ---
 
+## Notificaciones in-app
+
+Sistema de alertas dentro de la app para `admin_centro` y `profesor`. Tabla `notifications` (migración 005) + helper `notifyService` invocado desde controladores.
+
+### Tipos canónicos (en `services/notifyService.js`)
+
+```
+module_activated   · module_deactivated · tool_generated · exam_saved
+ocr_completed      · invoice_paid       · ai_error       · system
+```
+
+### Disparadores integrados
+
+| Flujo | Tipo | Destinatarios |
+|---|---|---|
+| Admin activa módulo | `module_activated` | Todos los profesores de la org |
+| Admin desactiva módulo | `module_deactivated` | Todos los profesores de la org |
+| Profesor genera output de tool (Fase 1) | `tool_generated` | El propio profesor |
+| Profesor guarda examen Cambridge | `exam_saved` | El propio profesor |
+| OCR completado (Cambridge o genérico) | `ocr_completed` | El propio profesor |
+| Stripe webhook `checkout.session.completed` | `invoice_paid` | Admins del centro |
+| Stripe webhook `invoice.paid` | `invoice_paid` | Admins del centro |
+
+### Helper
+
+```js
+const { notify, notifyRole, TYPES } = require('../services/notifyService');
+
+// A un usuario concreto
+await notify({
+  userId,
+  organizationId,
+  type: TYPES.TOOL_GENERATED,
+  title: 'Recurso generado: ...',
+  body: 'Disponible en biblioteca',
+  link: '/dashboard/resources',
+  metadata: { moduleId, toolKey },
+});
+
+// A todos los usuarios de una org con un rol
+await notifyRole({
+  organizationId,
+  role: 'profesor',
+  type: TYPES.MODULE_ACTIVATED,
+  title: 'Nuevo módulo disponible',
+  link: '/dashboard',
+});
+```
+
+Es **best-effort**: si la tabla no existe o la query falla, no rompe el flujo del caller. Los disparadores nunca son críticos para la operación principal.
+
+### Frontend
+
+- `NotificationBell.jsx` en el Topbar — badge con count de no-leídas (máximo "99+")
+- Polling cada 30 s vía React Query (`refetchInterval: 30_000`)
+- Dropdown con las últimas 12, marcado individual al click, "Marcar todas leídas"
+- Cierra con click fuera o `Escape`
+- Cada tipo tiene su color de acento (marino / granate / verde / amarillo)
+
+---
+
+## Tests
+
+Configuración en tres capas: unitarios backend (Jest), unitarios frontend (Vitest, API Jest-compatible), end-to-end (Playwright).
+
+### Comandos
+
+```bash
+# Desde la raíz (workspace)
+npm test                # ejecuta backend + frontend unitarios
+npm run test:backend    # solo Jest backend
+npm run test:frontend   # solo Vitest frontend
+npm run test:e2e        # Playwright (arranca backend+frontend automáticamente)
+npm run test:e2e:ui     # Playwright UI mode (interactivo)
+npm run test:e2e:install # instala el navegador Chromium
+```
+
+### Jest (backend)
+
+Configurado en `backend/jest.config.js`. Solo `node`, sin DOM.
+
+Archivos:
+- `src/utils/aiAvailable.test.js` — detector de configuración de IA (6 casos)
+- `src/services/claudeService.test.js` — `parseJSON` con respuestas malformadas (8 casos)
+- `src/services/pdfService.test.js` — smoke test de los renderers críticos (5 casos)
+- `src/services/tools/demoFixtures.test.js` — fixtures por output_kind (9 casos)
+
+Excluye `tests/integration/**` por defecto. Tests con BD/IA reales viven aparte.
+
+### Vitest (frontend)
+
+Configurado en `frontend/vitest.config.js` + setup en `src/test/setup.js` con `@testing-library/jest-dom/vitest` y cleanup automático. Entorno `jsdom`.
+
+Archivos:
+- `src/components/tools/DynamicForm.test.jsx` — render del schema, required, onChange, defaults (6 casos)
+- `src/components/ui/Button.test.jsx` — primitives Button, Card, Badge, ProgressBar
+
+### Playwright (e2e)
+
+Configurado en `playwright.config.js`. `webServer` arranca backend (3001) y frontend (5173) automáticamente. Usa `baseURL: http://localhost:5173` y locale `es-ES`. Solo Chromium por defecto.
+
+Helpers en `tests/e2e/helpers.js` con login UI usando los seeds demo (`admin@verigood.com / demo1234`).
+
+Specs:
+- `tests/e2e/login.spec.js` — login OK, credenciales inválidas, logout (3 casos)
+- `tests/e2e/tool-flow.spec.js` — Cambridge accesible, biblioteca carga, panel módulos, mis exámenes (4 casos)
+- `tests/e2e/billing.spec.js` — listado de facturas, gestionar suscripción, descarga real de PDF (3 casos)
+
+**Importante**: los e2e asumen MODO DEMO (sin `ANTHROPIC_API_KEY` válida) para no golpear la API de Anthropic en CI ni generar coste.
+
+### Cómo añadir tests
+
+- Backend: nuevo archivo `*.test.js` junto al fichero que prueba. Jest lo detecta vía `testMatch`.
+- Frontend: nuevo archivo `*.test.jsx`. Vitest globals (`describe`, `test`, `expect`) están en scope.
+- e2e: nuevo `*.spec.js` en `tests/e2e/`. Usar `loginAs(page, ADMIN)` del helper para autenticarse.
+
+---
+
 ## API — endpoints principales
 
 ### Auth
@@ -456,6 +580,15 @@ POST   /api/library/items
 GET    /api/library/items?search&module&kind&from&to
 GET    /api/library/items/:id
 DELETE /api/library/items/:id
+```
+
+### Notificaciones in-app
+```
+GET    /api/notifications?unread=true&limit=30
+GET    /api/notifications/unread-count
+POST   /api/notifications/:id/read
+POST   /api/notifications/read-all
+DELETE /api/notifications/:id
 ```
 
 ### Cambridge
@@ -550,6 +683,7 @@ psql $DATABASE_URL -f backend/src/migrations/001_initial_schema.sql
 psql $DATABASE_URL -f backend/src/migrations/002_modules_catalog.sql
 psql $DATABASE_URL -f backend/src/migrations/003_module_tools.sql
 psql $DATABASE_URL -f backend/src/migrations/004_library_items.sql
+psql $DATABASE_URL -f backend/src/migrations/005_notifications.sql
 
 # Seeds de SISTEMA (idempotentes, ON CONFLICT)
 psql $DATABASE_URL -f backend/src/seeds/001_modules_catalog.sql   # 23 módulos
@@ -663,6 +797,8 @@ module_tools          -- catálogo declarativo de tools (key, output_kind, input
 module_tool_bindings  -- pivote: qué tools tiene cada módulo
 library_items         -- biblioteca unificada: outputs de cualquier tool persistidos
                       --   (module_id, tool_key, kind, title, payload, metadata)
+notifications         -- in-app: user_id, type, title, body, link, read_at
+                      --   (8 tipos canónicos en notifyService.TYPES)
 exams                 -- Cambridge legacy (questions JSONB)
 exam_questions        -- banco de preguntas Cambridge curadas (BD híbrida)
 exam_attempts         -- intentos de corrección OCR Cambridge
@@ -711,3 +847,5 @@ SSL con Let's Encrypt: `certbot --nginx -d verigood.es -d www.verigood.es`
 - **Onboarding**: una org sin `onboarding_completed_at` ve el `OnboardingHero` en el dashboard institucional. La sidebar oculta etapas sin módulos activos. Estado expandido/contraído de la sidebar: `localStorage`.
 - **Modo demo**: si `aiAvailable()` falsea, el dispatcher de tools cortocircuita con `demoFixtures.forKind(...)`. No es bug, es funcionalidad.
 - **Facturas**: `renderInvoice` produce PDF con número correlativo, fechas, base imponible, IVA 21%, total, sello PAGADA/PENDIENTE y pie legal RGPD. Si la org tiene `stripe_customer_id` real, se usan facturas oficiales Stripe vía `invoice_pdf`. Si no, fixture backend (6 meses) y, como último fallback, 4 ejemplos precargados en el frontend.
+- **Notificaciones**: `notifyService` es best-effort — si falla (tabla no migrada, etc.) lo registra en logs pero **nunca rompe** el flujo del caller. Polling cada 30s en el frontend; migrar a WebSockets cuando haga falta inmediatez real. Tipos canónicos: ver `TYPES` en `notifyService.js`.
+- **Tests**: scaffolding completo con Jest (backend) + Vitest (frontend) + Playwright (e2e). Los e2e asumen modo demo (sin clave de IA) para no golpear Anthropic en CI. Ejecutar: `npm test`, `npm run test:e2e`.

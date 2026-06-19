@@ -14,16 +14,18 @@
 6. [Corrector OCR genérico](#corrector-ocr-genérico)
 7. [Biblioteca unificada](#biblioteca-unificada)
 8. [Facturación y PDFs](#facturación-y-pdfs)
-9. [Modo demo](#modo-demo)
-10. [Sistema de roles](#sistema-de-roles)
-11. [Instalación local](#instalación-local)
-12. [Variables de entorno](#variables-de-entorno)
-13. [Base de datos](#base-de-datos)
-14. [API REST](#api-rest)
-15. [Dirección estética](#dirección-estética)
-16. [Deploy en producción](#deploy-en-producción)
-17. [Credenciales de demo](#credenciales-de-demo)
-18. [Roadmap](#roadmap)
+9. [Notificaciones in-app](#notificaciones-in-app)
+10. [Tests](#tests)
+11. [Modo demo](#modo-demo)
+12. [Sistema de roles](#sistema-de-roles)
+13. [Instalación local](#instalación-local)
+14. [Variables de entorno](#variables-de-entorno)
+15. [Base de datos](#base-de-datos)
+16. [API REST](#api-rest)
+17. [Dirección estética](#dirección-estética)
+18. [Deploy en producción](#deploy-en-producción)
+19. [Credenciales de demo](#credenciales-de-demo)
+20. [Roadmap](#roadmap)
 
 ---
 
@@ -62,6 +64,7 @@ El modelo de negocio es institucional: el colegio contrata un plan, activa módu
 | OCR | Google Cloud Vision API |
 | Pagos | Stripe (checkout, customer portal, webhooks, facturas oficiales) |
 | PDF | PDFKit — renderers propios por output_kind |
+| Tests | Jest (backend) + Vitest (frontend) + Playwright (e2e) |
 | Deploy | Nginx + PM2 + VPS Madrid |
 
 ---
@@ -110,7 +113,8 @@ verigood/
 │       │   ├── 001_initial_schema.sql
 │       │   ├── 002_modules_catalog.sql
 │       │   ├── 003_module_tools.sql
-│       │   └── 004_library_items.sql
+│       │   ├── 004_library_items.sql
+│       │   └── 005_notifications.sql
 │       └── seeds/
 │           ├── 001_modules_catalog.sql   # 23 módulos
 │           ├── 002_module_tools.sql      # 56 tools + bindings
@@ -333,6 +337,111 @@ Todos comparten paleta y tipografía "Cuaderno del Catedrático".
 
 ---
 
+## Notificaciones in-app
+
+Sistema de alertas dentro de la app para `admin_centro` y `profesor`. Tabla `notifications` (migración 005) + helper `notifyService` invocado desde controladores.
+
+### Eventos que disparan notificación
+
+| Flujo | Tipo | Destinatarios |
+|---|---|---|
+| Admin activa un módulo | `module_activated` | Todos los profesores del centro |
+| Admin desactiva un módulo | `module_deactivated` | Todos los profesores del centro |
+| Profesor genera output con cualquier tool | `tool_generated` | El propio profesor |
+| Profesor guarda examen Cambridge | `exam_saved` | El propio profesor |
+| OCR completado (Cambridge o genérico) | `ocr_completed` | El profesor con la puntuación |
+| Stripe `checkout.session.completed` (webhook) | `invoice_paid` | Admins del centro |
+| Stripe `invoice.paid` (webhook) | `invoice_paid` | Admins del centro |
+
+### UI
+
+`NotificationBell` en el `Topbar`:
+- Badge con número de no-leídas (máximo "99+")
+- Polling cada 30 s vía React Query
+- Dropdown con las últimas 12 notificaciones, color de acento por tipo, formato relativo ("hace 5 min")
+- Click en una notificación: marca como leída + navega al `link`
+- Botón "Marcar todas leídas"
+
+### Endpoints
+
+```
+GET    /api/notifications?unread=true&limit=30
+GET    /api/notifications/unread-count
+POST   /api/notifications/:id/read
+POST   /api/notifications/read-all
+DELETE /api/notifications/:id
+```
+
+### Robustez
+
+`notifyService.notify(...)` es **best-effort**: si la tabla aún no está migrada o falla la query, se registra el warning y el flujo del caller (activar módulo, generar tool, etc.) sigue normal. Las notificaciones nunca son críticas para la operación principal.
+
+---
+
+## Tests
+
+Cobertura en tres capas:
+
+### Comandos
+
+```bash
+# Desde la raíz (workspace)
+npm test                # backend (Jest) + frontend (Vitest)
+npm run test:backend    # solo backend
+npm run test:frontend   # solo frontend
+npm run test:e2e        # Playwright (arranca backend + frontend automáticamente)
+npm run test:e2e:ui     # Playwright UI mode (interactivo)
+npm run test:e2e:install # instala el navegador Chromium
+
+# Por workspace
+npm run test --workspace=backend -- --watch
+npm run test --workspace=frontend -- --watch
+npm run test:coverage --workspace=backend
+```
+
+### Jest (backend)
+
+Configurado en `backend/jest.config.js`. Solo `node`, sin DOM.
+
+**Archivos de test:**
+- `src/utils/aiAvailable.test.js` — detector de configuración de IA (6 casos)
+- `src/services/claudeService.test.js` — `parseJSON` con respuestas malformadas de la IA (8 casos)
+- `src/services/pdfService.test.js` — smoke test de los renderers PDF críticos (5 casos)
+- `src/services/tools/demoFixtures.test.js` — fixtures por output_kind (9 casos)
+
+Excluye `tests/integration/**` por defecto. Tests que dependen de BD/IA reales viven en una carpeta aparte para que CI pueda correr solo los unitarios rápidos.
+
+### Vitest (frontend)
+
+Configurado en `frontend/vitest.config.js`. Entorno `jsdom` con `@testing-library/jest-dom` y cleanup automático entre tests.
+
+**Archivos de test:**
+- `src/components/tools/DynamicForm.test.jsx` — render del schema, required, onChange, defaults (6 casos)
+- `src/components/ui/Button.test.jsx` — primitives Button, Card, Badge, ProgressBar
+
+API compatible con Jest (`describe`, `test`, `expect` en scope global).
+
+### Playwright (e2e)
+
+Configurado en `playwright.config.js`. `webServer` arranca el backend (3001) y el frontend (5173) automáticamente.
+
+**Specs:**
+- `tests/e2e/login.spec.js` — login correcto, credenciales inválidas, logout (3 casos)
+- `tests/e2e/tool-flow.spec.js` — Cambridge accesible, biblioteca carga, mis exámenes, panel módulos (4 casos)
+- `tests/e2e/billing.spec.js` — listado de facturas, gestionar suscripción, descarga real de PDF (3 casos)
+
+Helpers compartidos en `tests/e2e/helpers.js` con `loginAs(page, user)` usando los seeds demo.
+
+**Importante**: los e2e asumen MODO DEMO (`ANTHROPIC_API_KEY` placeholder) para no golpear la API de Anthropic en CI ni generar coste.
+
+### Cómo añadir nuevos tests
+
+- Backend: nuevo archivo `*.test.js` junto al fichero que prueba. Jest lo detecta automáticamente.
+- Frontend: nuevo archivo `*.test.jsx` en cualquier carpeta de `src/`. Vitest globals (`describe`, `test`, `expect`) están disponibles.
+- e2e: nuevo `*.spec.js` en `tests/e2e/`. Usar el helper `loginAs(page, ADMIN)` para autenticarse.
+
+---
+
 ## Modo demo
 
 `aiAvailable()` detecta clave válida: existe, no es `PLACEHOLDER`, empieza por `sk-ant-`, longitud >= 30.
@@ -405,6 +514,7 @@ psql verigood_local < backend/src/migrations/001_initial_schema.sql
 psql verigood_local < backend/src/migrations/002_modules_catalog.sql
 psql verigood_local < backend/src/migrations/003_module_tools.sql
 psql verigood_local < backend/src/migrations/004_library_items.sql
+psql verigood_local < backend/src/migrations/005_notifications.sql
 psql verigood_local < backend/src/seeds/001_modules_catalog.sql   # SISTEMA
 psql verigood_local < backend/src/seeds/002_module_tools.sql      # SISTEMA — 56 tools
 psql verigood_local < backend/src/seeds/dev_demo_data.sql         # DEMO
@@ -473,6 +583,7 @@ organization_modules   → Pivote: módulos activos por org
 module_tools           → 56 tools con input_schema + output_kind
 module_tool_bindings   → Pivote: qué tools tiene cada módulo
 library_items          → Biblioteca unificada (outputs de cualquier tool)
+notifications          → Notificaciones in-app (8 tipos canónicos, polling 30s)
 exams                  → Cambridge legacy (questions JSONB)
 exam_questions         → Banco curado Cambridge (BD híbrida)
 exam_attempts          → Correcciones OCR Cambridge
@@ -512,6 +623,12 @@ Base URL: `https://verigood.es/api` (producción) · `http://localhost:3001/api`
 | GET | `/library/items/:id` | Detalle |
 | POST | `/library/items` | Guardar manual (el dispatcher ya lo hace auto) |
 | DELETE | `/library/items/:id` | Eliminar |
+| **Notificaciones in-app** | | |
+| GET | `/notifications?unread=true&limit=30` | Listar |
+| GET | `/notifications/unread-count` | Contador para el badge |
+| POST | `/notifications/:id/read` | Marcar individual como leída |
+| POST | `/notifications/read-all` | Marcar todas como leídas |
+| DELETE | `/notifications/:id` | Eliminar |
 | **Cambridge** | | |
 | POST | `/cambridge/exams/generate` | Generar examen Cambridge |
 | POST | `/cambridge/exams/save` | Guardar examen |
@@ -633,12 +750,15 @@ Ver `agentes/README.md` para el detalle de cada rol y cuándo saltar pasos.
 - ✅ Sistema PDF para todos los `output_kind` + facturas
 - ✅ Modo demo controlado en todos los subsistemas
 - ✅ Facturación con fallback fixture y PDF oficial Stripe
+- ✅ Notificaciones in-app con 7 flujos disparadores integrados
+- ✅ Scaffolding de tests: Jest + Vitest + Playwright con ejemplos representativos
 
 **En curso / próximos pasos:**
 - Banco de preguntas curadas por asignatura (estilo `exam_questions` de Cambridge)
-- Tests unitarios (Jest) y e2e (Playwright)
-- CI/CD pipeline (GitHub Actions → deploy automático)
-- Panel de superadmin completo (organizaciones, facturación global)
+- Ampliar cobertura de tests (sobre el scaffolding actual)
+- CI/CD pipeline (GitHub Actions → tests + deploy automático)
+- Panel de superadmin completo (facturación global con datos reales)
+- WebSockets para notificaciones casi-tiempo-real (hoy polling 30s)
 - Bachillerato (Fase 2)
 
 ---
