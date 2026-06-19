@@ -95,6 +95,13 @@ const listItems = async (req, res) => {
 
     res.json({ items: result.rows });
   } catch (err) {
+    // Tabla aún no existe (migración 004 pendiente): devolvemos lista vacía
+    // en lugar de 500 para que la Biblioteca renderice y muestre el estado
+    // vacío con instrucciones, en vez de petar la pantalla.
+    if (err.code === '42P01') {
+      console.warn('library_items: tabla no existe. Pasa la migración 004.');
+      return res.json({ items: [], migrationPending: true });
+    }
     console.error('library listItems error:', err);
     res.status(500).json({ error: 'Error al listar la biblioteca' });
   }

@@ -12,10 +12,8 @@ const KIND_LABELS = {
   commentary: 'Comentario',
 };
 
-const PDF_TYPE_BY_KIND = {
-  text: 'sheet', exercise_set: 'exercises', rubric: 'sheet',
-  timeline: 'sheet', quiz: 'exercises', commentary: 'commentary', exam: 'exam',
-};
+// pdfService entiende cada output_kind directamente.
+const pdfTypeFor = (kind) => kind || 'sheet';
 
 export default function ResourceDetail() {
   const { id } = useParams();
@@ -65,7 +63,7 @@ export default function ResourceDetail() {
   }
 
   const mod = (catalogData?.modules || []).find((m) => m.id === item.moduleId);
-  const pdfType = PDF_TYPE_BY_KIND[item.kind] || 'sheet';
+  const pdfType = pdfTypeFor(item.kind);
   const input = item.metadata?.input || {};
 
   return (

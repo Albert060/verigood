@@ -461,6 +461,573 @@ const renderFeedback = (doc, data, { title, subtitle, accent, moduleKey }) => {
   }
 };
 
+// ── Renderers por output_kind del catálogo Fase 1 ───────────
+// La forma de los datos viene determinada por los handlers en services/tools/
+// y por demoFixtures. Mantenemos formato "Cuaderno del Catedrático" (paleta,
+// hairline, sección romana) idéntico al renderer Cambridge.
+
+// output_kind: 'exercise_set' → data: { title, topic, course, exercises:[{ id, type, prompt, options?, answer, points }] }
+const renderExerciseSet = (doc, data, { title, subtitle, accent, moduleKey }) => {
+  drawHeader(doc, {
+    title: title || data.title || 'Ejercicios',
+    subtitle: subtitle || [data.topic, data.course].filter(Boolean).join(' · '),
+    accent: accent || MODULE_COLOR[moduleKey] || COLOR.marino,
+    romanNum: 'I',
+  });
+
+  // Cabecera de alumno
+  doc.fillColor(COLOR.marronSoft).font('Helvetica').fontSize(10);
+  doc.text('Nombre: __________________________________', { continued: true });
+  doc.text('     Curso: ____________     Fecha: __________');
+  doc.moveDown(1.0);
+
+  if (data.instructions) paragraph(doc, data.instructions, { color: COLOR.marronSoft, font: 'Helvetica-Oblique', size: 10.5 });
+
+  const exercises = data.exercises || [];
+  if (!exercises.length) {
+    paragraph(doc, 'Sin ejercicios.', { color: COLOR.marronSoft });
+  }
+
+  exercises.forEach((ex, i) => {
+    if (doc.y > doc.page.height - 160) doc.addPage();
+
+    doc
+      .fillColor(COLOR.marino)
+      .font('Helvetica-Bold')
+      .fontSize(11)
+      .text(`${i + 1}.`, { continued: true })
+      .fillColor(COLOR.tinta)
+      .font('Helvetica')
+      .text(`  ${ex.prompt || ex.question || ''}`, { lineGap: 1.5 });
+
+    if (Array.isArray(ex.options) && ex.options.length) {
+      doc.moveDown(0.3);
+      ex.options.forEach((opt, j) => {
+        const letter = String.fromCharCode(65 + j);
+        doc
+          .fillColor(COLOR.tinta)
+          .font('Helvetica')
+          .fontSize(10.5)
+          .text(`     ${letter})  ${opt}`, { lineGap: 1 });
+      });
+    } else {
+      // Línea de respuesta para ejercicios abiertos
+      doc.moveDown(0.4);
+      const y = doc.y;
+      doc.save()
+        .moveTo(doc.page.margins.left + 24, y)
+        .lineTo(doc.page.width - doc.page.margins.right, y)
+        .lineWidth(0.5)
+        .strokeColor(COLOR.linea)
+        .dash(2, { space: 2 })
+        .stroke()
+        .undash();
+      doc.restore();
+      doc.y = y + 14;
+    }
+
+    if (Array.isArray(ex.data) || ex.data) {
+      doc.moveDown(0.2);
+      const txt = Array.isArray(ex.data) ? ex.data.join(' · ') : String(ex.data);
+      doc.fillColor(COLOR.marronSoft).font('Helvetica-Oblique').fontSize(9.5).text(`     Datos: ${txt}`);
+    }
+
+    doc.moveDown(0.7);
+  });
+
+  // Solucionario
+  doc.addPage();
+  drawHeader(doc, {
+    title: 'Solucionario',
+    subtitle: 'Para uso del docente',
+    accent: COLOR.granate,
+    romanNum: 'II',
+  });
+
+  exercises.forEach((ex, i) => {
+    if (doc.y > doc.page.height - 110) doc.addPage();
+    doc
+      .fillColor(COLOR.granate)
+      .font('Helvetica-Bold')
+      .fontSize(10.5)
+      .text(`${i + 1}. `, { continued: true })
+      .fillColor(COLOR.tinta)
+      .font('Helvetica')
+      .text(`Respuesta: ${ex.answer ?? '—'}`);
+
+    if (Array.isArray(ex.solution_steps) && ex.solution_steps.length) {
+      ex.solution_steps.forEach((s, j) => {
+        doc
+          .fillColor(COLOR.marronSoft)
+          .font('Helvetica-Oblique')
+          .fontSize(9.5)
+          .text(`     ${j + 1}) ${s}`, { lineGap: 1 });
+      });
+    }
+    if (ex.explanation) {
+      doc
+        .fillColor(COLOR.marronSoft)
+        .font('Helvetica-Oblique')
+        .fontSize(9.5)
+        .text(`     ${ex.explanation}`, { lineGap: 1 });
+    }
+    doc.moveDown(0.4);
+  });
+};
+
+// output_kind: 'quiz' → data: { title, topic, course, questions:[{ id, prompt, options, correct_index, explanation }] }
+const renderQuiz = (doc, data, { title, subtitle, accent, moduleKey }) => {
+  drawHeader(doc, {
+    title: title || data.title || 'Cuestionario',
+    subtitle: subtitle || [data.topic, data.course].filter(Boolean).join(' · '),
+    accent: accent || MODULE_COLOR[moduleKey] || COLOR.marino,
+    romanNum: 'I',
+  });
+
+  doc.fillColor(COLOR.marronSoft).font('Helvetica').fontSize(10);
+  doc.text('Nombre: __________________________________', { continued: true });
+  doc.text('     Curso: ____________     Fecha: __________');
+  doc.moveDown(1.0);
+
+  const questions = data.questions || [];
+  questions.forEach((q, i) => {
+    if (doc.y > doc.page.height - 160) doc.addPage();
+
+    doc
+      .fillColor(COLOR.marino)
+      .font('Helvetica-Bold')
+      .fontSize(11)
+      .text(`${i + 1}.`, { continued: true })
+      .fillColor(COLOR.tinta)
+      .font('Helvetica')
+      .text(`  ${q.prompt || q.question || ''}`, { lineGap: 1.5 });
+
+    (q.options || []).forEach((opt, j) => {
+      const letter = String.fromCharCode(65 + j);
+      doc.fillColor(COLOR.tinta).font('Helvetica').fontSize(10.5)
+        .text(`     ${letter})  ${opt}`, { lineGap: 1 });
+    });
+    doc.moveDown(0.7);
+  });
+
+  // Solucionario
+  doc.addPage();
+  drawHeader(doc, {
+    title: 'Solucionario',
+    subtitle: 'Para uso del docente',
+    accent: COLOR.granate,
+    romanNum: 'II',
+  });
+
+  questions.forEach((q, i) => {
+    if (doc.y > doc.page.height - 90) doc.addPage();
+    const idx = Number.isInteger(q.correct_index) ? q.correct_index : null;
+    const letter = idx != null ? String.fromCharCode(65 + idx) : '—';
+    const text = idx != null && q.options?.[idx] ? `${letter}) ${q.options[idx]}` : '—';
+    doc
+      .fillColor(COLOR.granate)
+      .font('Helvetica-Bold')
+      .fontSize(10.5)
+      .text(`${i + 1}. `, { continued: true })
+      .fillColor(COLOR.tinta)
+      .font('Helvetica')
+      .text(`Respuesta correcta: ${text}`);
+    if (q.explanation) {
+      doc.fillColor(COLOR.marronSoft).font('Helvetica-Oblique').fontSize(9.5)
+        .text(`     ${q.explanation}`, { lineGap: 1 });
+    }
+    doc.moveDown(0.4);
+  });
+};
+
+// output_kind: 'rubric' → data: { title, context, scale:[], criteria:[{ name, weight, levels:[{label, descriptor}] }] }
+const renderRubric = (doc, data, { title, subtitle, accent, moduleKey }) => {
+  drawHeader(doc, {
+    title: title || data.title || 'Rúbrica',
+    subtitle: subtitle || data.context || '',
+    accent: accent || MODULE_COLOR[moduleKey] || COLOR.granate,
+    romanNum: 'I',
+  });
+
+  const scale = data.scale || ['Iniciado','En proceso','Adecuado','Avanzado'];
+  const criteria = data.criteria || [];
+
+  criteria.forEach((c, i) => {
+    if (doc.y > doc.page.height - 180) doc.addPage();
+    doc
+      .fillColor(COLOR.marino)
+      .font('Helvetica-Bold')
+      .fontSize(12)
+      .text(`${i + 1}. ${c.name || `Criterio ${i + 1}`}` + (c.weight ? `  (peso: ${c.weight})` : ''));
+    doc.moveDown(0.3);
+
+    (c.levels || []).forEach((lv) => {
+      doc
+        .fillColor(COLOR.granate)
+        .font('Helvetica-Bold')
+        .fontSize(10)
+        .text(`   ${lv.label || ''}:`, { continued: true })
+        .fillColor(COLOR.tinta)
+        .font('Helvetica')
+        .text(`  ${lv.descriptor || ''}`, { lineGap: 1.5 });
+    });
+
+    if (!c.levels && scale.length) {
+      scale.forEach((label) => {
+        doc.fillColor(COLOR.marronSoft).font('Helvetica-Oblique').fontSize(10)
+          .text(`   ${label}: ____________________________________________________`);
+      });
+    }
+
+    doc.moveDown(0.7);
+  });
+};
+
+// output_kind: 'timeline' → data: { title, period, events:[{ year, title, description }] }
+const renderTimeline = (doc, data, { title, subtitle, accent, moduleKey }) => {
+  drawHeader(doc, {
+    title: title || data.title || 'Línea de tiempo',
+    subtitle: subtitle || data.period || '',
+    accent: accent || MODULE_COLOR[moduleKey] || COLOR.marino,
+    romanNum: 'I',
+  });
+
+  const events = data.events || [];
+  events.forEach((ev, i) => {
+    if (doc.y > doc.page.height - 110) doc.addPage();
+    doc
+      .fillColor(COLOR.granate)
+      .font('Helvetica-Bold')
+      .fontSize(13)
+      .text(`${ev.year ?? '—'}`, { continued: true })
+      .fillColor(COLOR.tinta)
+      .font('Helvetica-Bold')
+      .fontSize(11)
+      .text(`   ${ev.title || ''}`);
+    doc.moveDown(0.15);
+    if (ev.description) {
+      doc.fillColor(COLOR.tinta).font('Helvetica').fontSize(10.5)
+        .text(`     ${ev.description}`, { lineGap: 1.5 });
+    }
+    doc.moveDown(0.5);
+  });
+};
+
+// output_kind: 'commentary' → data: { title, source_text, context, key_concepts:[{term, definition}], commentary_paragraphs:[], guiding_questions:[] }
+const renderCommentary = (doc, data, { title, subtitle, accent, moduleKey }) => {
+  drawHeader(doc, {
+    title: title || data.title || 'Comentario',
+    subtitle: subtitle || '',
+    accent: accent || MODULE_COLOR[moduleKey] || COLOR.marino,
+    romanNum: 'I',
+  });
+
+  if (data.source_text) {
+    sectionLabel(doc, 'Texto');
+    paragraph(doc, data.source_text, { font: 'Helvetica-Oblique' });
+  }
+  if (data.context) {
+    sectionLabel(doc, 'Contexto');
+    paragraph(doc, data.context);
+  }
+  if (Array.isArray(data.key_concepts) && data.key_concepts.length) {
+    sectionLabel(doc, 'Conceptos clave');
+    data.key_concepts.forEach((kc) => {
+      doc
+        .fillColor(COLOR.granate)
+        .font('Helvetica-Bold')
+        .fontSize(10.5)
+        .text(`• ${kc.term || ''}:`, { continued: true })
+        .fillColor(COLOR.tinta)
+        .font('Helvetica')
+        .text(`  ${kc.definition || ''}`, { lineGap: 1.5 });
+    });
+    doc.moveDown(0.4);
+  }
+  if (Array.isArray(data.commentary_paragraphs) && data.commentary_paragraphs.length) {
+    sectionLabel(doc, 'Comentario');
+    data.commentary_paragraphs.forEach((p) => paragraph(doc, p));
+  }
+  if (Array.isArray(data.guiding_questions) && data.guiding_questions.length) {
+    sectionLabel(doc, 'Preguntas guía');
+    data.guiding_questions.forEach((q, i) => {
+      doc.fillColor(COLOR.marino).font('Helvetica-Bold').fontSize(11)
+        .text(`${i + 1}. `, { continued: true })
+        .fillColor(COLOR.tinta).font('Helvetica').text(typeof q === 'string' ? q : (q.question || ''));
+      doc.moveDown(0.3);
+    });
+  }
+};
+
+// output_kind: 'text' → data: string (markdown ligero) o { content }
+const renderText = (doc, data, { title, subtitle, accent, moduleKey }) => {
+  drawHeader(doc, {
+    title: title || (typeof data === 'object' ? data.title : '') || 'Documento',
+    subtitle: subtitle || '',
+    accent: accent || MODULE_COLOR[moduleKey] || COLOR.marino,
+    romanNum: 'I',
+  });
+
+  const text = typeof data === 'string'
+    ? data
+    : (data.content || data.text || data.body || JSON.stringify(data, null, 2));
+
+  // Soporte mínimo de markdown: # / ## / ### / -. Sin parser pesado: paso
+  // línea a línea decidiendo estilo. Mantiene márgenes y saltos del estilo
+  // "Cuaderno del Catedrático" sin pintar la sintaxis cruda.
+  const lines = String(text).split(/\n/);
+  for (const raw of lines) {
+    if (doc.y > doc.page.height - 90) doc.addPage();
+    const line = raw.replace(/\r$/, '');
+    if (!line.trim()) { doc.moveDown(0.4); continue; }
+
+    let m;
+    if ((m = line.match(/^#\s+(.+)$/))) {
+      doc.moveDown(0.3);
+      doc.fillColor(COLOR.marino).font('Helvetica-Bold').fontSize(15).text(m[1]);
+      doc.moveDown(0.3);
+      continue;
+    }
+    if ((m = line.match(/^##\s+(.+)$/))) {
+      doc.moveDown(0.25);
+      doc.fillColor(COLOR.tinta).font('Helvetica-Bold').fontSize(12).text(m[1]);
+      doc.moveDown(0.2);
+      continue;
+    }
+    if ((m = line.match(/^###\s+(.+)$/))) {
+      doc.fillColor(COLOR.marronSoft).font('Helvetica-Bold').fontSize(10).text(m[1].toUpperCase(), { characterSpacing: 1 });
+      doc.moveDown(0.2);
+      continue;
+    }
+    if ((m = line.match(/^[\-*]\s+(.+)$/))) {
+      doc.fillColor(COLOR.granate).font('Helvetica-Bold').fontSize(11).text('• ', { continued: true })
+        .fillColor(COLOR.tinta).font('Helvetica').text(m[1].replace(/\*\*(.+?)\*\*/g, '$1'), { lineGap: 1.5 });
+      continue;
+    }
+    if ((m = line.match(/^(\d+)\.\s+(.+)$/))) {
+      doc.fillColor(COLOR.marino).font('Helvetica-Bold').fontSize(11).text(`${m[1]}. `, { continued: true })
+        .fillColor(COLOR.tinta).font('Helvetica').text(m[2].replace(/\*\*(.+?)\*\*/g, '$1'), { lineGap: 1.5 });
+      continue;
+    }
+    if (/^>\s+/.test(line)) {
+      doc.fillColor(COLOR.marronSoft).font('Helvetica-Oblique').fontSize(10.5)
+        .text(line.replace(/^>\s+/, ''), { lineGap: 1.5 });
+      continue;
+    }
+    doc.fillColor(COLOR.tinta).font('Helvetica').fontSize(11)
+      .text(line.replace(/\*\*(.+?)\*\*/g, '$1'), { lineGap: 1.5 });
+  }
+};
+
+// output_kind: 'invoice' → factura. Estilo limpio profesional con mismo lenguaje
+// del proyecto (paleta, hairline, tipografía). Lleva número de factura, datos
+// del emisor, del cliente, periodo, líneas, totales con IVA y sello de pago.
+const fmtEUR = (cents, currency = 'eur') => {
+  if (cents == null || isNaN(cents)) return '—';
+  const amount = (cents / 100).toLocaleString('es-ES', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+  return `${amount} ${currency.toUpperCase() === 'EUR' ? '€' : currency.toUpperCase()}`;
+};
+
+const fmtDate = (iso) => {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('es-ES', {
+      day: '2-digit', month: 'long', year: 'numeric',
+    });
+  } catch (_) { return '—'; }
+};
+
+const ISSUER = {
+  name: 'VeriGood S.L.',
+  taxId: 'B-XXXXXXXX',
+  address: 'Calle Gran Vía, 1 · 28013 Madrid · España',
+  contact: 'facturacion@verigood.es · verigood.es',
+};
+
+const renderInvoice = (doc, data, { title, subtitle, accent, moduleKey }) => {
+  const ac = accent || COLOR.marino;
+
+  // Cabecera tipo cuaderno + nº de factura grande a la derecha
+  drawHeader(doc, {
+    title: title || 'Factura',
+    subtitle: subtitle || (data.number ? `Nº ${data.number}` : ''),
+    accent: ac,
+    romanNum: 'I',
+  });
+
+  // ── Bloque: emisor y cliente
+  const leftX  = doc.page.margins.left;
+  const rightX = doc.page.width / 2 + 12;
+  const blockY = doc.y;
+  const colW   = doc.page.width / 2 - doc.page.margins.left - 12;
+
+  const renderParty = (x, y, label, lines) => {
+    doc.save();
+    doc.fillColor(COLOR.marronSoft).font('Helvetica-Bold').fontSize(9)
+      .text(label.toUpperCase(), x, y, { characterSpacing: 1.5, width: colW });
+    doc.fillColor(COLOR.tinta).font('Helvetica').fontSize(10.5);
+    let cursor = doc.y + 2;
+    lines.filter(Boolean).forEach((l) => {
+      doc.text(l, x, cursor, { width: colW, lineGap: 1 });
+      cursor = doc.y;
+    });
+    doc.restore();
+    return cursor;
+  };
+
+  const emisorBottom = renderParty(leftX, blockY, 'Emisor', [
+    ISSUER.name,
+    `CIF: ${ISSUER.taxId}`,
+    ISSUER.address,
+    ISSUER.contact,
+  ]);
+
+  const addr = data.customer_address || {};
+  const taxId = (data.customer_tax_ids?.[0]?.value) || data.customer_tax_id || null;
+  const clienteBottom = renderParty(rightX, blockY, 'Cliente', [
+    data.customer_name || '—',
+    taxId ? `CIF/NIF: ${taxId}` : null,
+    [addr.line1, addr.line2].filter(Boolean).join(', ') || null,
+    [addr.postal_code, addr.city, addr.country].filter(Boolean).join(' · ') || null,
+    data.customer_email || null,
+  ]);
+
+  doc.y = Math.max(emisorBottom, clienteBottom) + 14;
+
+  // ── Bloque: metadatos de factura (fechas, estado)
+  const metaY = doc.y;
+  doc.save()
+    .rect(leftX, metaY, doc.page.width - doc.page.margins.left - doc.page.margins.right, 56)
+    .strokeColor(COLOR.linea).lineWidth(0.6).stroke();
+  doc.restore();
+
+  const metaCols = [
+    { label: 'Nº FACTURA', value: data.number || data.id || '—' },
+    { label: 'EMITIDA',    value: fmtDate(data.created) },
+    { label: 'VENCIMIENTO', value: fmtDate(data.due_date) },
+    { label: 'PAGADA',     value: data.paid ? fmtDate(data.paid_at) : 'Pendiente' },
+  ];
+  const colWidth = (doc.page.width - doc.page.margins.left - doc.page.margins.right) / metaCols.length;
+  metaCols.forEach((c, i) => {
+    const x = leftX + i * colWidth + 10;
+    doc.fillColor(COLOR.marronSoft).font('Helvetica').fontSize(8)
+      .text(c.label, x, metaY + 9, { characterSpacing: 1.2, width: colWidth - 20 });
+    doc.fillColor(COLOR.tinta).font('Helvetica-Bold').fontSize(11)
+      .text(c.value, x, metaY + 24, { width: colWidth - 20 });
+  });
+  doc.y = metaY + 56 + 18;
+
+  // ── Sello de estado (PAGADA / PENDIENTE)
+  const sealY = doc.y;
+  const sealColor = data.paid ? COLOR.verde : COLOR.granate;
+  const sealText  = data.paid ? 'PAGADA' : (data.status || 'PENDIENTE').toUpperCase();
+  doc.save();
+  doc.rotate(-6, { origin: [doc.page.width - 150, sealY + 14] });
+  doc.roundedRect(doc.page.width - 220, sealY, 130, 36, 3)
+    .lineWidth(1.6).strokeColor(sealColor).stroke();
+  doc.fillColor(sealColor).font('Helvetica-Bold').fontSize(16)
+    .text(sealText, doc.page.width - 220, sealY + 10, { width: 130, align: 'center', characterSpacing: 2 });
+  doc.restore();
+
+  // ── Periodo facturado
+  if (data.period_start || data.period_end) {
+    doc.fillColor(COLOR.marronSoft).font('Helvetica-Oblique').fontSize(10);
+    doc.text(`Periodo facturado: ${fmtDate(data.period_start)} — ${fmtDate(data.period_end)}`, leftX, doc.y);
+    doc.moveDown(1);
+  } else {
+    doc.moveDown(0.5);
+  }
+
+  // ── Tabla de líneas
+  sectionLabel(doc, 'Detalle');
+  const tableTop = doc.y;
+  const colDescW = doc.page.width - doc.page.margins.left - doc.page.margins.right - 140;
+  const colQtyW  = 50;
+  const colAmtW  = 90;
+
+  // Header
+  doc.fillColor(COLOR.marronSoft).font('Helvetica-Bold').fontSize(9);
+  doc.text('CONCEPTO', leftX, tableTop, { width: colDescW, characterSpacing: 1.2 });
+  doc.text('CANT.', leftX + colDescW, tableTop, { width: colQtyW, align: 'right', characterSpacing: 1.2 });
+  doc.text('IMPORTE', leftX + colDescW + colQtyW, tableTop, { width: colAmtW, align: 'right', characterSpacing: 1.2 });
+
+  doc.moveDown(0.5);
+  doc.save()
+    .moveTo(leftX, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y)
+    .lineWidth(0.5).strokeColor(COLOR.linea).stroke()
+    .restore();
+  doc.moveDown(0.4);
+
+  // Rows
+  const lines = data.lines || [];
+  if (!lines.length) {
+    doc.fillColor(COLOR.marronSoft).font('Helvetica-Oblique').fontSize(10)
+      .text('Sin líneas de detalle.', leftX);
+    doc.moveDown(0.5);
+  }
+  lines.forEach((l) => {
+    const y = doc.y;
+    doc.fillColor(COLOR.tinta).font('Helvetica').fontSize(10.5);
+    doc.text(l.description || '—', leftX, y, { width: colDescW });
+    const rowBottom = doc.y;
+    doc.text(String(l.quantity ?? 1), leftX + colDescW, y, { width: colQtyW, align: 'right' });
+    doc.text(fmtEUR(l.amount, data.currency), leftX + colDescW + colQtyW, y, { width: colAmtW, align: 'right' });
+    if (l.period_start || l.period_end) {
+      doc.fillColor(COLOR.marronSoft).font('Helvetica-Oblique').fontSize(9)
+        .text(`Periodo: ${fmtDate(l.period_start)} — ${fmtDate(l.period_end)}`, leftX, rowBottom + 1);
+    }
+    doc.moveDown(0.4);
+  });
+
+  doc.save()
+    .moveTo(leftX, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y)
+    .lineWidth(0.5).strokeColor(COLOR.linea).stroke()
+    .restore();
+  doc.moveDown(0.6);
+
+  // ── Totales (alineados a la derecha)
+  const totalsX = doc.page.width - doc.page.margins.right - 220;
+  const labelW = 110;
+  const valueW = 110;
+
+  const drawTotalRow = (label, value, bold = false) => {
+    const y = doc.y;
+    doc.fillColor(COLOR.marronSoft).font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 11 : 10.5);
+    doc.text(label, totalsX, y, { width: labelW });
+    doc.fillColor(bold ? COLOR.tinta : COLOR.tinta).font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 12 : 10.5);
+    doc.text(value, totalsX + labelW, y, { width: valueW, align: 'right' });
+    doc.moveDown(bold ? 0.5 : 0.3);
+  };
+
+  drawTotalRow('Base imponible',   fmtEUR(data.subtotal, data.currency));
+  if (data.tax != null && data.tax !== 0) {
+    drawTotalRow('IVA (21%)',      fmtEUR(data.tax, data.currency));
+  }
+  // Línea separadora del total
+  doc.save()
+    .moveTo(totalsX, doc.y).lineTo(totalsX + labelW + valueW, doc.y)
+    .lineWidth(0.6).strokeColor(COLOR.linea).stroke()
+    .restore();
+  doc.moveDown(0.3);
+  drawTotalRow('TOTAL',            fmtEUR(data.total ?? data.amount_due, data.currency), true);
+
+  if (data.paid && data.amount_paid != null) {
+    drawTotalRow('Importe pagado', fmtEUR(data.amount_paid, data.currency));
+  }
+
+  // ── Pie legal
+  doc.moveDown(2);
+  doc.fillColor(COLOR.marronSoft).font('Helvetica-Oblique').fontSize(8.5);
+  doc.text(
+    'Factura emitida conforme a la normativa española vigente. Conserva este documento como justificante de pago. ' +
+    'Para cualquier incidencia escribe a facturacion@verigood.es indicando el número de factura.',
+    doc.page.margins.left, doc.y,
+    { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, lineGap: 1.5, align: 'justify' }
+  );
+};
+
 // Generic JSON dump (last-resort, but pretty)
 const renderJSON = (doc, data, { title, subtitle, accent }) => {
   drawHeader(doc, { title: title || 'Documento', subtitle, accent: accent || COLOR.marino });
@@ -485,8 +1052,8 @@ const buildPdf = ({ type, data, title, subtitle, moduleKey }) =>
       const opts = { title, subtitle, accent, moduleKey };
 
       switch (type) {
+        // Cambridge / Lengua legacy
         case 'exam':
-        case 'exercises':
           renderExam(doc, data, opts);
           break;
         case 'problems':
@@ -497,7 +1064,6 @@ const buildPdf = ({ type, data, title, subtitle, moduleKey }) =>
           renderDynamics(doc, data, opts);
           break;
         case 'sheet':
-        case 'commentary':
           renderSheet(doc, data, opts);
           break;
         case 'feedback':
@@ -506,6 +1072,33 @@ const buildPdf = ({ type, data, title, subtitle, moduleKey }) =>
         case 'syntax':
           renderFeedback(doc, data, opts);
           break;
+
+        // Catálogo Fase 1: el `type` es el `output_kind` literal
+        case 'exercises':       // alias usado por algunos handlers viejos
+        case 'exercise_set':
+          renderExerciseSet(doc, data, opts);
+          break;
+        case 'quiz':
+          renderQuiz(doc, data, opts);
+          break;
+        case 'rubric':
+          renderRubric(doc, data, opts);
+          break;
+        case 'timeline':
+          renderTimeline(doc, data, opts);
+          break;
+        case 'commentary':
+          renderCommentary(doc, data, opts);
+          break;
+        case 'text':
+          renderText(doc, data, opts);
+          break;
+
+        // Facturación
+        case 'invoice':
+          renderInvoice(doc, data, opts);
+          break;
+
         default:
           renderJSON(doc, data, opts);
       }

@@ -34,15 +34,9 @@ const parseValidationErrors = (err) => {
   }, {});
 };
 
-// Mapea el output_kind del backend al type que entiende pdfService.
-const PDF_TYPE_BY_KIND = {
-  text:         'sheet',
-  exercise_set: 'exercises',
-  rubric:       'sheet',
-  timeline:     'sheet',
-  quiz:         'exercises',
-  commentary:   'commentary',
-};
+// El backend pdfService ahora entiende cada output_kind directamente, así que
+// no hace falta mapeo: pasamos el kind tal cual y el renderer correcto se
+// invoca según el `switch` de buildPdf.
 
 // Heurística para sacar un título legible del input + tool.
 const buildDefaultTitle = (tool, input) => {
@@ -98,16 +92,33 @@ export default function ToolRunner({ moduleId, tool }) {
     if (code === 'BAD_AI_RESPONSE') {
       return 'La IA devolvió un resultado no válido. Pulsa "Generar" para volver a intentarlo.';
     }
+    if (code === 'AI_NOT_CONFIGURED') {
+      return 'La integración con la API de IA no está configurada en este servidor. Pide al administrador del centro que configure ANTHROPIC_API_KEY.';
+    }
+    if (code === 'AI_INVALID_KEY') {
+      return 'La clave de la API de IA no es válida o ha caducado. Avisa al administrador del centro para actualizarla.';
+    }
+    if (code === 'AI_RATE_LIMITED') {
+      return 'Has alcanzado el límite de la API de IA. Espera unos segundos y reintenta.';
+    }
+    if (code === 'AI_UNAVAILABLE') {
+      return 'La API de IA está temporalmente saturada. Reintenta en unos segundos.';
+    }
     if (run.error?.code === 'ECONNABORTED' || /timeout/i.test(run.error?.message || '')) {
       return 'La generación está tardando demasiado. Reduce el tamaño (menos preguntas, menos hitos…) y vuelve a intentarlo.';
     }
     if (!run.error?.response) {
       return 'No hay conexión con el servidor. Comprueba tu red e inténtalo de nuevo.';
     }
+    // Si el mensaje del backend trae un body de Anthropic crudo, lo escondemos:
+    // no aporta nada útil al profesor y revela detalles de implementación.
+    if (typeof msg === 'string' && msg.includes('authentication_error')) {
+      return 'La clave de la API de IA no es válida o ha caducado. Avisa al administrador del centro.';
+    }
     return msg || 'Error al ejecutar la herramienta.';
   }, [run.error]);
 
-  const pdfType = run.data ? PDF_TYPE_BY_KIND[run.data.output_kind] : null;
+  const pdfType = run.data?.output_kind || null;
   const defaultTitle = buildDefaultTitle(tool, input);
 
   return (
@@ -152,6 +163,11 @@ export default function ToolRunner({ moduleId, tool }) {
 
       {run.data && (
         <div className="mt-10">
+          {run.data.demo && (
+            <div className="mb-4 px-4 py-3 border border-amarillo/60 bg-amarillo/20 text-tinta font-mono text-[11px] leading-relaxed">
+              MODO DEMO · resultado de muestra (sin clave de IA configurada). Avisa al administrador del centro para activar la generación real.
+            </div>
+          )}
           <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
             <div className="font-mono text-[10px] tracking-[0.15em] uppercase text-marron-soft">
               Resultado · {run.data.output_kind}
@@ -170,15 +186,21 @@ export default function ToolRunner({ moduleId, tool }) {
                   label="PDF"
                 />
               )}
-              <Button
-                variant="ghost"
-                size="sm"
-                loading={save.isPending}
-                disabled={!!savedId}
-                onClick={() => save.mutate()}
-              >
-                {savedId ? '✓ Guardado en biblioteca' : '☐ Guardar en biblioteca'}
-              </Button>
+              {run.data.autoSaved ? (
+                <span className="font-mono text-[11px] text-marron-soft border border-linea px-2.5 py-1.5">
+                  ✓ Guardado en biblioteca
+                </span>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  loading={save.isPending}
+                  disabled={!!savedId}
+                  onClick={() => save.mutate()}
+                >
+                  {savedId ? '✓ Guardado en biblioteca' : '☐ Guardar en biblioteca'}
+                </Button>
+              )}
             </div>
           </div>
           {save.error && (

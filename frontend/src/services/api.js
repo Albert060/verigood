@@ -200,6 +200,8 @@ export const stripeApi = {
   getPlans: () => api.get('/stripe/plans'),
   checkout: (plan) => api.post('/stripe/checkout', { plan }),
   portal: () => api.post('/stripe/portal'),
+  getInvoices: () => api.get('/stripe/invoices'),
+  getInvoice: (id) => api.get(`/stripe/invoices/${id}`),
 };
 
 // ── PDF / Demo status ────────────────────────────────────────

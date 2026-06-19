@@ -14,15 +14,9 @@ const KIND_LABELS = {
   commentary:   'Comentario',
 };
 
-const PDF_TYPE_BY_KIND = {
-  text:         'sheet',
-  exercise_set: 'exercises',
-  rubric:       'sheet',
-  timeline:     'sheet',
-  quiz:         'exercises',
-  commentary:   'commentary',
-  exam:         'exam',
-};
+// El backend pdfService entiende ahora cada output_kind directamente.
+// El kind especial 'exam' (Cambridge) tiene su propio renderer (renderExam).
+const PDF_TYPE_BY_KIND = (kind) => kind || 'sheet';
 
 // Biblioteca unificada: lee tanto los exámenes Cambridge legacy (tabla `exams`)
 // como los items genéricos guardados desde cualquier tool (`library_items`).
@@ -133,7 +127,7 @@ export default function InstitutionalResources() {
         pdfData = { title: full.title, level: full.level, topic: full.topic, questions: full.questions || [] };
       } else {
         const full = await libraryApi.get(resource.id).then((r) => r.data.item);
-        pdfType = PDF_TYPE_BY_KIND[full.kind] || 'sheet';
+        pdfType = PDF_TYPE_BY_KIND(full.kind);
         pdfData = full.payload;
       }
       const mod = moduleLookup[resource.moduleId];

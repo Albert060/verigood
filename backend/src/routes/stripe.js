@@ -75,6 +75,139 @@ router.post('/checkout', authenticate, async (req, res) => {
   }
 });
 
+// Helper compartido entre GET /invoices y GET /invoices/:id. Si la org tiene
+// stripe_customer_id real, consulta Stripe (PDF oficial vía invoice_pdf).
+// Si no, devuelve un fixture coherente con la org y el plan en curso.
+const listInvoicesForOrg = async ({ orgId, userEmail }) => {
+  const orgResult = await query(
+    `SELECT id, name, plan, stripe_customer_id, created_at
+     FROM organizations WHERE id = $1`,
+    [orgId]
+  );
+  const org = orgResult.rows[0];
+  if (!org) return { invoices: [], source: 'demo', org: null };
+
+  if (org.stripe_customer_id && process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_SECRET_KEY.includes('PLACEHOLDER')) {
+    try {
+      const list = await stripe.invoices.list({ customer: org.stripe_customer_id, limit: 24 });
+      const invoices = list.data.map((inv) => ({
+          id: inv.id,
+          number: inv.number,
+          status: inv.status,
+          paid: inv.paid,
+          amount_due: inv.amount_due,
+          amount_paid: inv.amount_paid,
+          subtotal: inv.subtotal,
+          tax: inv.tax,
+          total: inv.total,
+          currency: inv.currency,
+          created: inv.created ? new Date(inv.created * 1000).toISOString() : null,
+          paid_at: inv.status_transitions?.paid_at
+            ? new Date(inv.status_transitions.paid_at * 1000).toISOString()
+            : null,
+          due_date: inv.due_date ? new Date(inv.due_date * 1000).toISOString() : null,
+          period_start: inv.period_start ? new Date(inv.period_start * 1000).toISOString() : null,
+          period_end: inv.period_end ? new Date(inv.period_end * 1000).toISOString() : null,
+          hosted_invoice_url: inv.hosted_invoice_url,
+          invoice_pdf: inv.invoice_pdf,
+          customer_name: inv.customer_name,
+          customer_email: inv.customer_email,
+          customer_address: inv.customer_address,
+          customer_tax_ids: inv.customer_tax_ids,
+          lines: (inv.lines?.data || []).map((l) => ({
+            description: l.description,
+            quantity: l.quantity,
+            amount: l.amount,
+            period_start: l.period?.start ? new Date(l.period.start * 1000).toISOString() : null,
+            period_end:   l.period?.end   ? new Date(l.period.end   * 1000).toISOString() : null,
+          })),
+          source: 'stripe',
+        }));
+        return { invoices, source: 'stripe', org };
+      } catch (stripeErr) {
+        console.warn('stripe invoices.list failed, cayendo a fixture:', stripeErr.message);
+      }
+    }
+
+    // Fallback: fixture coherente. Devuelve los últimos meses del plan actual.
+    const planMeta = PLANS[org.plan] || PLANS.colegio;
+    const monthly = planMeta.price || 14900; // céntimos
+    const subtotal = Math.round(monthly / 1.21); // base imponible (IVA 21%)
+    const tax = monthly - subtotal;
+
+    const today = new Date();
+    const invoices = Array.from({ length: 6 }, (_, i) => {
+      const issuedAt = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const periodStart = new Date(issuedAt);
+      const periodEnd = new Date(issuedAt.getFullYear(), issuedAt.getMonth() + 1, 0);
+      const isCurrent = i === 0;
+      return {
+        id: `demo_${issuedAt.getFullYear()}_${String(issuedAt.getMonth() + 1).padStart(2, '0')}`,
+        number: `VG-${issuedAt.getFullYear()}-${String(issuedAt.getMonth() + 1).padStart(2, '0')}-${String(req.user.organization_id).slice(0, 4).toUpperCase()}`,
+        status: isCurrent ? 'open' : 'paid',
+        paid: !isCurrent,
+        amount_due: monthly,
+        amount_paid: isCurrent ? 0 : monthly,
+        subtotal,
+        tax,
+        total: monthly,
+        currency: 'eur',
+        created: issuedAt.toISOString(),
+        paid_at: isCurrent ? null : new Date(issuedAt.getTime() + 24 * 3600 * 1000).toISOString(),
+        due_date: new Date(issuedAt.getTime() + 7 * 24 * 3600 * 1000).toISOString(),
+        period_start: periodStart.toISOString(),
+        period_end: periodEnd.toISOString(),
+        hosted_invoice_url: null,
+        invoice_pdf: null,
+        customer_name: org.name,
+        customer_email: userEmail,
+        customer_address: null,
+        customer_tax_ids: [],
+        lines: [{
+          description: `VeriGood ${planMeta.name} — ${issuedAt.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}`,
+          quantity: 1,
+          amount: monthly,
+          period_start: periodStart.toISOString(),
+          period_end: periodEnd.toISOString(),
+        }],
+        source: 'demo',
+      };
+    });
+
+  return { invoices, source: 'demo', org };
+};
+
+// GET /stripe/invoices — lista de facturas de la organización
+router.get('/invoices', authenticate, async (req, res) => {
+  try {
+    const { invoices, source } = await listInvoicesForOrg({
+      orgId: req.user.organization_id,
+      userEmail: req.user.email,
+    });
+    res.json({ invoices, source });
+  } catch (err) {
+    console.error('list invoices error:', err);
+    res.status(500).json({ error: 'Error al obtener facturas' });
+  }
+});
+
+// GET /stripe/invoices/:id — detalle de una factura concreta (para PDF)
+router.get('/invoices/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { invoices, org } = await listInvoicesForOrg({
+      orgId: req.user.organization_id,
+      userEmail: req.user.email,
+    });
+    const inv = invoices.find((i) => i.id === id);
+    if (!inv) return res.status(404).json({ error: 'Factura no encontrada' });
+    res.json({ invoice: { ...inv, customer_name: inv.customer_name || org?.name } });
+  } catch (err) {
+    console.error('get invoice error:', err);
+    res.status(500).json({ error: 'Error al obtener la factura' });
+  }
+});
+
 // POST /stripe/portal — billing portal
 router.post('/portal', authenticate, async (req, res) => {
   try {

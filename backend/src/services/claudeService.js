@@ -1,7 +1,34 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { AsyncLocalStorage } = require('async_hooks');
+const { aiAvailable } = require('../utils/aiAvailable');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Convierte errores de la SDK de Anthropic en errores con un `code` estable
+// que el dispatcher de tools mapea a status HTTP + mensaje en español. Sin esto
+// el body crudo de Anthropic (`{"type":"error",...}`) llegaba al frontend.
+const mapAnthropicError = (err) => {
+  const status = err?.status || err?.response?.status;
+  if (status === 401 || status === 403) {
+    const wrapped = new Error('La clave de la API de IA no es válida o está caducada.');
+    wrapped.code = 'AI_INVALID_KEY';
+    wrapped.cause = err;
+    return wrapped;
+  }
+  if (status === 429) {
+    const wrapped = new Error('Has alcanzado el límite de la API de IA. Espera unos segundos.');
+    wrapped.code = 'AI_RATE_LIMITED';
+    wrapped.cause = err;
+    return wrapped;
+  }
+  if (status === 529 || (status >= 500 && status < 600)) {
+    const wrapped = new Error('La API de IA está temporalmente saturada. Reintenta en unos segundos.');
+    wrapped.code = 'AI_UNAVAILABLE';
+    wrapped.cause = err;
+    return wrapped;
+  }
+  return err;
+};
 
 const MODELS = {
   haiku: process.env.CLAUDE_HAIKU_MODEL || 'claude-haiku-4-5-20251001',
@@ -40,17 +67,31 @@ const recordUsage = (modelId, usage) => {
  * @param {number} opts.maxTokens
  */
 const callClaude = async ({ system, messages, model = 'haiku', maxTokens = 2048 }) => {
+  // Cortocircuito en modo demo (sin key o key placeholder). Antes esto solo
+  // se comprobaba en algunos servicios (Cambridge); ahora afecta a CUALQUIER
+  // handler que pase por aquí.
+  if (!aiAvailable()) {
+    const err = new Error('La integración con la API de IA no está configurada en este entorno.');
+    err.code = 'AI_NOT_CONFIGURED';
+    throw err;
+  }
+
   const formattedMessages = Array.isArray(messages)
     ? messages
     : [{ role: 'user', content: messages }];
 
   const modelId = MODELS[model];
-  const response = await client.messages.create({
-    model: modelId,
-    max_tokens: maxTokens,
-    system,
-    messages: formattedMessages,
-  });
+  let response;
+  try {
+    response = await client.messages.create({
+      model: modelId,
+      max_tokens: maxTokens,
+      system,
+      messages: formattedMessages,
+    });
+  } catch (err) {
+    throw mapAnthropicError(err);
+  }
 
   recordUsage(modelId, response.usage);
   return response.content[0].text;
