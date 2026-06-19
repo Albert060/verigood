@@ -80,9 +80,15 @@ router.get('/exams', authenticate, requireModule('cambridge'), async (req, res) 
     const offset = (page - 1) * limit;
 
     const result = await query(
-      `SELECT e.id, e.title, e.level, e.topic, e.created_at,
-              u.name as teacher_name,
-              jsonb_array_length(e.questions) as question_count
+      `SELECT e.id,
+              e.title,
+              e.level,
+              e.topic,
+              e.module,
+              e.created_at AS "createdAt",
+              e.metadata,
+              u.name AS "teacherName",
+              jsonb_array_length(e.questions) AS "totalQuestions"
        FROM exams e
        JOIN users u ON e.teacher_id = u.id
        WHERE e.organization_id = $1
@@ -91,9 +97,51 @@ router.get('/exams', authenticate, requireModule('cambridge'), async (req, res) 
       [req.user.organization_id, limit, offset]
     );
 
-    res.json({ exams: result.rows });
+    const exams = result.rows.map((r) => ({
+      ...r,
+      exerciseTypes: r.metadata?.exerciseTypes || [],
+      source: r.metadata?.source || 'hybrid',
+    }));
+
+    res.json({ exams });
   } catch (err) {
     res.status(500).json({ error: 'Error al obtener exámenes' });
+  }
+});
+
+// ── GET /cambridge/exams/:id ────────────────────────────────
+router.get('/exams/:id', authenticate, requireModule('cambridge'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      `SELECT e.id, e.title, e.level, e.topic, e.questions, e.metadata, e.created_at,
+              u.name AS teacher_name
+       FROM exams e
+       JOIN users u ON u.id = e.teacher_id
+       WHERE e.id = $1 AND e.organization_id = $2`,
+      [id, req.user.organization_id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Examen no encontrado' });
+    res.json({ exam: result.rows[0] });
+  } catch (err) {
+    console.error('get exam error:', err);
+    res.status(500).json({ error: 'Error al obtener el examen' });
+  }
+});
+
+// ── DELETE /cambridge/exams/:id ─────────────────────────────
+router.delete('/exams/:id', authenticate, requireModule('cambridge'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      `DELETE FROM exams WHERE id = $1 AND organization_id = $2 RETURNING id`,
+      [id, req.user.organization_id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Examen no encontrado' });
+    res.json({ id });
+  } catch (err) {
+    console.error('delete exam error:', err);
+    res.status(500).json({ error: 'Error al eliminar el examen' });
   }
 });
 

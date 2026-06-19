@@ -132,6 +132,14 @@ export const moduleToolsApi = {
     api.post(`/modules/${moduleId}/tools/${toolKey}/run`, { input }, { timeout: 90000 }),
 };
 
+// ── Library (biblioteca unificada de outputs) ────────────────
+export const libraryApi = {
+  list:   (params) => api.get('/library/items', { params }),
+  get:    (id)     => api.get(`/library/items/${id}`),
+  create: (data)   => api.post('/library/items', data),
+  remove: (id)     => api.delete(`/library/items/${id}`),
+};
+
 // ── Module OCR (corrector OCR por asignatura) ────────────────
 export const moduleOcrApi = {
   getConfig: (moduleId) => api.get(`/modules/${moduleId}/ocr/config`),
@@ -155,6 +163,8 @@ export const cambridgeApi = {
   generateExam: (data) => api.post('/cambridge/exams/generate', data),
   saveExam: (data) => api.post('/cambridge/exams/save', data),
   getExams: (params) => api.get('/cambridge/exams', { params }),
+  getExam: (id) => api.get(`/cambridge/exams/${id}`),
+  deleteExam: (id) => api.delete(`/cambridge/exams/${id}`),
   correctOcr: (formData) =>
     api.post('/cambridge/ocr/correct', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 }),
   generateDynamics: (data) => api.post('/cambridge/dynamics/generate', data),

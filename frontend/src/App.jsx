@@ -23,6 +23,7 @@ import InstitutionalDashboard from './pages/institutional/Dashboard';
 import InstitutionalUsers from './pages/institutional/Users';
 import InstitutionalModules from './pages/institutional/Modules';
 import InstitutionalResources from './pages/institutional/Resources';
+import InstitutionalResourceDetail from './pages/institutional/ResourceDetail';
 import InstitutionalStats from './pages/institutional/Stats';
 import InstitutionalBilling from './pages/institutional/Billing';
 
@@ -34,6 +35,7 @@ import OcrCorrector from './pages/cambridge/OcrCorrector';
 import DynamicsGenerator from './pages/cambridge/DynamicsGenerator';
 import PresentationGenerator from './pages/cambridge/PresentationGenerator';
 import ExamsList from './pages/cambridge/ExamsList';
+import ExamDetail from './pages/cambridge/ExamDetail';
 
 // Lengua
 import LenguaLayout from './pages/lengua/LenguaLayout';
@@ -131,6 +133,7 @@ export default function App() {
           <Route path="users" element={<ProtectedRoute roles={['admin_centro']}><InstitutionalUsers /></ProtectedRoute>} />
           <Route path="modules" element={<ProtectedRoute roles={['admin_centro']}><InstitutionalModules /></ProtectedRoute>} />
           <Route path="resources" element={<InstitutionalResources />} />
+          <Route path="resources/:id" element={<InstitutionalResourceDetail />} />
           <Route path="stats" element={<ProtectedRoute roles={['admin_centro']}><InstitutionalStats /></ProtectedRoute>} />
           <Route path="billing" element={<ProtectedRoute roles={['admin_centro']}><InstitutionalBilling /></ProtectedRoute>} />
         </Route>
@@ -143,6 +146,7 @@ export default function App() {
           <Route index element={<CambridgeHome />} />
           <Route path="exams/new" element={<ExamGenerator />} />
           <Route path="exams" element={<ExamsList />} />
+          <Route path="exams/:id" element={<ExamDetail />} />
           <Route path="ocr" element={<OcrCorrector />} />
           <Route path="dynamics" element={<DynamicsGenerator />} />
           <Route path="presentations" element={<PresentationGenerator />} />

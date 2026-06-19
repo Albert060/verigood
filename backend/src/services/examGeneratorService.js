@@ -82,14 +82,20 @@ Return JSON array of question objects with fields: type, question, options (if a
 };
 
 const saveExam = async ({ exam, title, teacherId, orgId }) => {
+  const metadata = {
+    exerciseTypes: exam.exerciseTypes || [],
+    source: exam.source || 'hybrid',
+    totalQuestions: Array.isArray(exam.questions) ? exam.questions.length : (exam.totalQuestions || 0),
+  };
   const result = await query(
-    `INSERT INTO exams (title, level, topic, questions, teacher_id, organization_id, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id`,
+    `INSERT INTO exams (title, level, topic, questions, metadata, teacher_id, organization_id, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING id`,
     [
       title || `${exam.level} — ${exam.topic || 'General'} — ${new Date().toLocaleDateString('es')}`,
       exam.level,
       exam.topic,
       JSON.stringify(exam.questions),
+      JSON.stringify(metadata),
       teacherId,
       orgId,
     ]
