@@ -1,6 +1,6 @@
 # VeriGood
 
-> Plataforma SaaS de inteligencia artificial para colegios. Automatiza la creación de exámenes, corrección de ejercicios manuscritos, dinámicas de clase y materiales didácticos.
+> Plataforma SaaS de inteligencia artificial para colegios españoles. Automatiza la creación de exámenes, corrección de ejercicios manuscritos, dinámicas de clase, fichas, rúbricas y materiales didácticos — para todas las asignaturas de Primaria y ESO.
 
 ---
 
@@ -10,21 +10,26 @@
 2. [Arquitectura técnica](#arquitectura-técnica)
 3. [Estructura del proyecto](#estructura-del-proyecto)
 4. [Módulos disponibles](#módulos-disponibles)
-5. [Sistema de roles](#sistema-de-roles)
-6. [Instalación local](#instalación-local)
-7. [Variables de entorno](#variables-de-entorno)
-8. [Base de datos](#base-de-datos)
-9. [API REST](#api-rest)
-10. [Dirección estética](#dirección-estética)
-11. [Deploy en producción](#deploy-en-producción)
-12. [Credenciales de demo](#credenciales-de-demo)
-13. [Roadmap](#roadmap)
+5. [Sistema de tools (catálogo declarativo)](#sistema-de-tools-catálogo-declarativo)
+6. [Corrector OCR genérico](#corrector-ocr-genérico)
+7. [Biblioteca unificada](#biblioteca-unificada)
+8. [Facturación y PDFs](#facturación-y-pdfs)
+9. [Modo demo](#modo-demo)
+10. [Sistema de roles](#sistema-de-roles)
+11. [Instalación local](#instalación-local)
+12. [Variables de entorno](#variables-de-entorno)
+13. [Base de datos](#base-de-datos)
+14. [API REST](#api-rest)
+15. [Dirección estética](#dirección-estética)
+16. [Deploy en producción](#deploy-en-producción)
+17. [Credenciales de demo](#credenciales-de-demo)
+18. [Roadmap](#roadmap)
 
 ---
 
 ## Descripción del producto
 
-VeriGood es un SaaS B2B dirigido exclusivamente a centros educativos. Permite a los profesores delegar en IA las tareas docentes más repetitivas: diseñar exámenes Cambridge desde cero, corregir ejercicios manuscritos con OCR, preparar dinámicas de clase y generar prompts para presentaciones con NotebookLM.
+VeriGood es un SaaS B2B dirigido exclusivamente a centros educativos españoles. Permite a los profesores delegar en IA las tareas docentes más repetitivas: diseñar exámenes y actividades por asignatura (Primaria y ESO), corregir ejercicios manuscritos con OCR, preparar dinámicas de clase, generar fichas temáticas y rúbricas de evaluación.
 
 El modelo de negocio es institucional: el colegio contrata un plan, activa módulos y gestiona a sus profesores desde un panel de administración centralizado.
 
@@ -49,15 +54,15 @@ El modelo de negocio es institucional: el colegio contrata un plan, activa módu
 | Capa | Tecnología |
 |------|-----------|
 | Frontend | React 18 + Vite + Tailwind CSS |
-| Estado cliente | Zustand (auth) + React Query (server state) |
+| Estado cliente | Zustand (auth) + React Query v5 (server state) |
 | Routing | React Router v6 |
-| Backend | Node.js + Express |
+| Backend | Node.js 20 + Express |
 | Base de datos | PostgreSQL 15 |
-| IA generativa | Anthropic Claude API (haiku + sonnet) |
-| OCR | Google Vision API |
-| Pagos | Stripe (checkout sessions + webhooks) |
-| Logs | Winston |
-| Contenedores | Docker + Docker Compose |
+| IA generativa | Anthropic Claude API — `claude-haiku-4-5-20251001` (tools/correcciones) + `claude-sonnet-4-6` (generación larga) |
+| OCR | Google Cloud Vision API |
+| Pagos | Stripe (checkout, customer portal, webhooks, facturas oficiales) |
+| PDF | PDFKit — renderers propios por output_kind |
+| Deploy | Nginx + PM2 + VPS Madrid |
 
 ---
 
@@ -65,81 +70,77 @@ El modelo de negocio es institucional: el colegio contrata un plan, activa módu
 
 ```
 verigood/
-├── agentes/                            # Perfiles de agente para el flujo de desarrollo
-│   ├── README.md
-│   ├── arquitecto-software.md
-│   ├── desarrollador.md
-│   ├── auditor.md
-│   ├── tester.md
-│   └── documentador.md
+├── package.json                          # npm workspaces root
+├── .env.example                          # variables documentadas
+├── ecosystem.config.js                   # PM2
+├── deploy.sh
 │
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx                     # Rutas y ProtectedRoute
-│   │   ├── index.css                   # Tailwind + clases custom
-│   │   ├── stores/
-│   │   │   └── authStore.js            # Zustand con persist
-│   │   ├── services/
-│   │   │   └── api.js                  # Axios + interceptor JWT
-│   │   ├── components/
-│   │   │   ├── ui/                     # Button, Card, Input, Modal, Badge, EmptyState
-│   │   │   ├── onboarding/             # OnboardingHero (bienvenida 3 CTAs)
-│   │   │   └── layout/                 # Sidebar, SidebarStage, Topbar
-│   │   └── pages/
-│   │       ├── auth/                   # LoginPage, RegisterPage
-│   │       ├── institutional/          # Dashboard, Users, Modules, Courses,
-│   │       │                           # Resources, Stats, Billing
-│   │       ├── placeholder/            # ModulePlaceholderPage (módulos sin layout)
-│   │       ├── cambridge/              # CambridgeLayout, Home, ExamGenerator,
-│   │       │                           # OcrCorrector, DynamicsGenerator,
-│   │       │                           # PresentationGenerator, ExamsList
-│   │       └── landing/                # LandingPage pública
-│   ├── tailwind.config.js
-│   ├── vite.config.js
-│   └── nginx.conf                      # Config SPA + proxy /api
+├── agentes/                              # Perfiles de agente para desarrollo
 │
 ├── backend/
-│   ├── src/
-│   │   ├── index.js                    # App Express principal
-│   │   ├── config/
-│   │   │   ├── database.js             # pg Pool
-│   │   │   └── logger.js               # Winston
-│   │   ├── middleware/
-│   │   │   ├── auth.js                 # authenticate, authorize, requireModule
-│   │   │   └── validate.js             # express-validator formatter
-│   │   ├── controllers/
-│   │   │   ├── authController.js       # register, login, refresh, logout, me
-│   │   │   ├── usersController.js      # CRUD usuarios
-│   │   │   └── organizationsController.js
-│   │   ├── routes/
-│   │   │   ├── auth.js
-│   │   │   ├── cambridge.js            # 4 agentes IA
-│   │   │   ├── stripe.js
-│   │   │   └── stats.js
-│   │   └── services/
-│   │       ├── claudeService.js        # callClaude(), parseJSON()
-│   │       ├── examGeneratorService.js # Generación híbrida BD+Claude
-│   │       ├── ocrCorrectorService.js  # Google Vision + corrección
-│   │       ├── dynamicsService.js      # 8 tipos de dinámica
-│   │       ├── presentationsService.js # NotebookLM prompt + slides
-│   │       └── mockService.js          # Respuestas mock para DEMO_MODE
-│   ├── migrations/
-│   │   ├── 001_initial_schema.sql      # 15 tablas + ENUMs + triggers
-│   │   ├── 002_modules_catalog.sql     # tablas modules + organization_modules + onboarding
-│   │   └── run.js                      # Runner con control de versiones
-│   ├── seeds/
-│   │   ├── 001_modules_catalog.sql     # SISTEMA — catálogo cerrado de módulos
-│   │   └── dev_demo_data.sql           # DEMO — datos y usuarios de prueba
-│   ├── Dockerfile                      # Producción
-│   └── Dockerfile.local                # Dev con nodemon + auto-migración
+│   └── src/
+│       ├── index.js
+│       ├── config/database.js
+│       ├── middleware/auth.js
+│       ├── utils/aiAvailable.js          # detección de clave IA válida
+│       ├── controllers/
+│       │   ├── moduleToolsController.js  # dispatcher tools + auto-persistencia
+│       │   ├── moduleOcrController.js    # OCR genérico por asignatura
+│       │   ├── libraryController.js      # CRUD biblioteca
+│       │   └── ...
+│       ├── routes/
+│       │   ├── moduleTools.js
+│       │   ├── moduleOcr.js
+│       │   ├── library.js
+│       │   ├── cambridge.js
+│       │   ├── stripe.js                 # incluye /invoices (Stripe + fallback)
+│       │   ├── pdf.js
+│       │   └── ...
+│       ├── services/
+│       │   ├── claudeService.js          # callClaude con códigos de error mapeados
+│       │   ├── pdfService.js             # renderers por output_kind + invoice
+│       │   ├── ocrSubjects.js            # config declarativa de OCR por asignatura
+│       │   ├── ocrSubjectCorrectorService.js
+│       │   └── tools/
+│       │       ├── index.js              # registro central
+│       │       ├── demoFixtures.js       # fixtures por output_kind
+│       │       ├── consistencyCheck.js
+│       │       └── <21 handlers por módulo>.js
+│       ├── migrations/
+│       │   ├── 001_initial_schema.sql
+│       │   ├── 002_modules_catalog.sql
+│       │   ├── 003_module_tools.sql
+│       │   └── 004_library_items.sql
+│       └── seeds/
+│           ├── 001_modules_catalog.sql   # 23 módulos
+│           ├── 002_module_tools.sql      # 56 tools + bindings
+│           └── dev_demo_data.sql
 │
-├── docker-compose.yml                  # Producción
-├── docker-compose.local.yml            # Local (postgres + backend + frontend)
-├── .env.example                        # Todas las variables documentadas
-├── .env.local                          # Pre-configurado para pruebas locales
-├── start.bat                           # Arranque con un clic — Windows
-├── start.sh                            # Arranque con un clic — Mac/Linux
-└── README.md                           # Este archivo
+├── frontend/
+│   └── src/
+│       ├── App.jsx
+│       ├── services/api.js               # axios + APIs por subsistema
+│       ├── components/
+│       │   ├── ui/                       # Button, Card, DownloadPdfButton, ...
+│       │   ├── tools/
+│       │   │   ├── ToolRunner.jsx        # ejecutor genérico + PDF + biblioteca
+│       │   │   ├── DynamicForm.jsx
+│       │   │   └── results/              # 6 renderers por output_kind
+│       │   └── layout/
+│       └── pages/
+│           ├── auth/
+│           ├── landing/
+│           ├── superadmin/
+│           ├── institutional/            # Dashboard, Users, Modules, Stats,
+│           │                             # Resources (biblioteca), ResourceDetail,
+│           │                             # Billing (con PDF facturas)
+│           ├── module/                   # ModuleLayout, ModuleHome,
+│           │                             # ToolPage, ModuleOcrPage
+│           └── cambridge/                # layout dedicado
+│
+├── docker-compose.yml
+├── start.bat   start.sh
+└── README.md
 ```
 
 ---
@@ -148,54 +149,219 @@ verigood/
 
 Los módulos viven en un **catálogo cerrado** (tabla `modules` + pivote `organization_modules`). Cada colegio activa/desactiva desde el panel de administración.
 
-**Primaria:**
+### Primaria
 
-| ID | Nombre | Estado |
-|----|--------|--------|
-| `matematicas_primaria` | Matemáticas | 🔜 Placeholder |
-| `lengua_primaria` | Lengua castellana y literatura | 🔜 Placeholder |
-| `ingles_primaria` | Inglés | 🔜 Placeholder |
-| `medio_primaria` | Conocimiento del medio natural, social y cultural | 🔜 Placeholder |
-| `plastica_primaria` | Plástica | 🔜 Placeholder |
-| `ed_fisica_primaria` | Educación física | 🔜 Placeholder |
-| `musica_primaria` | Música | 🔜 Placeholder |
-| `ed_artistica_primaria` | Educación artística | 🔜 Placeholder |
-| `religion_primaria` | Religión | 🔜 Placeholder |
-| `ciudadania_primaria` | Ed. Ciudadanía | 🔜 Placeholder |
+| ID | Nombre | Tools | OCR |
+|----|--------|:----:|:---:|
+| `matematicas_primaria` | Matemáticas | 3 | ✅ |
+| `lengua_primaria` | Lengua castellana | 3 | ✅ |
+| `ingles_primaria` | Inglés | 3 | ✅ |
+| `medio_primaria` | Conocimiento del medio | 3 | ✅ |
+| `plastica_primaria` | Plástica | 2 | — |
+| `ed_fisica_primaria` | Educación física | 3 | — |
+| `musica_primaria` | Música | 3 | — |
+| `ed_artistica_primaria` | Educación artística | 3 | — |
+| `religion_primaria` | Religión | 2 | — |
+| `ciudadania_primaria` | Ed. Ciudadanía | 2 | — |
 
-**ESO:**
+### ESO
 
-| ID | Nombre | Estado |
-|----|--------|--------|
-| `lengua_eso` | Lengua castellana y literatura | 🔜 Placeholder |
-| `matematicas_eso` | Matemáticas | 🔜 Placeholder |
-| `ingles_eso` | Inglés | 🔜 Placeholder |
-| `cambridge` | Cambridge | ✅ Implementado — 4 agentes IA |
-| `geo_historia_eso` | Geografía e Historia | 🔜 Placeholder |
-| `ed_fisica_eso` | Educación física | 🔜 Placeholder |
-| `bio_geo_eso` | Biología y Geología | 🔜 Placeholder |
-| `tecno_digital_eso` | Tecnología y digitalización | 🔜 Placeholder |
-| `fis_quim_eso` | Física y Química | 🔜 Placeholder |
-| `epva_eso` | Educación plástica, visual y audiovisual | 🔜 Placeholder |
-| `religion_eso` | Religión | 🔜 Placeholder |
-| `valores_eticos_eso` | Educación en valores éticos | 🔜 Placeholder |
-| `tutorias_eso` | Tutorías | 🔜 Placeholder |
+| ID | Nombre | Tools | OCR |
+|----|--------|:----:|:---:|
+| `lengua_eso` | Lengua castellana y literatura | 4 | ✅ |
+| `matematicas_eso` | Matemáticas | 3 | ✅ |
+| `ingles_eso` | Inglés | 3 | ✅ |
+| `cambridge` | Cambridge | **layout dedicado** | ✅ |
+| `geo_historia_eso` | Geografía e Historia | 3 | ✅ |
+| `ed_fisica_eso` | Educación física | 3 | — |
+| `bio_geo_eso` | Biología y Geología | 3 | ✅ |
+| `tecno_digital_eso` | Tecnología y digitalización | 3 | ✅ |
+| `fis_quim_eso` | Física y Química | 1 | ✅ |
+| `epva_eso` | EPVA | 3 | — |
+| `religion_eso` | Religión | 2 | — |
+| `valores_eticos_eso` | Valores éticos | 3 | — |
+| `tutorias_eso` | Tutorías | 3 | — |
 
-Los módulos en estado "Placeholder" están registrados en el catálogo y se pueden activar por organización, pero su pantalla aún no está construida: renderizan `ModulePlaceholderPage` hasta que se desarrolle su layout. Bachillerato queda fuera del Fase 1 (roadmap).
+**Total: 56 tools en el catálogo, 11 módulos con OCR genérico y Cambridge con flujo dedicado.**
 
-### Módulo Cambridge — 4 agentes
+### Módulo Cambridge — 4 agentes dedicados
 
-**Agente 1 — Generador de exámenes**
-Crea exámenes estilo Cambridge completos para niveles A1–C2. Tipos de pregunta: multiple choice, open cloze, word formation, key word transformation. Genera título, instrucciones, duración, puntuación total y soluciones con explicación. Usa generación híbrida: primero busca preguntas verificadas en BD, completa con Claude cuando no hay cobertura suficiente.
+**Agente 1 — Generador de exámenes** — Crea exámenes estilo Cambridge completos para niveles A1–C2. Generación híbrida: primero busca preguntas verificadas en BD (`exam_questions`), completa con Claude cuando no hay cobertura. Devuelve título, instrucciones, soluciones con explicación, fuente (BD vs IA).
 
-**Agente 2 — Corrector OCR**
-El profesor sube una foto del examen manuscrito del alumno. Google Vision extrae el texto; Claude lo corrige devolviendo: puntuación numérica, banda Cambridge, errores gramaticales con corrección, fortalezas, áreas de mejora y feedback narrativo. Cada corrección queda guardada con el historial del alumno.
+**Agente 2 — Corrector OCR** — Foto del examen → Google Vision → Claude. Devuelve puntuación, banda Cambridge, errores con corrección, fortalezas, áreas de mejora y feedback.
 
-**Agente 3 — Generador de dinámicas**
-Genera actividades de clase completas para 8 tipos (vocabulary, speaking, reading, writing, listening, grammar, warmup, review). El output incluye: objetivos, materiales, procedimiento paso a paso con tiempos, diferenciación (apoyo + ampliación) y criterios de evaluación.
+**Agente 3 — Generador de dinámicas** — Actividades de clase para 8 tipos (vocabulary, speaking, reading, writing, listening, grammar, warmup, review). Incluye objetivos, materiales, procedimiento con tiempos, diferenciación y criterios de evaluación.
 
-**Agente 4 — Generador de presentaciones**
-Produce el prompt optimizado para NotebookLM más un esquema de diapositivas detallado. El profesor lo pega directamente en NotebookLM para generar la presentación final.
+**Agente 4 — Generador de presentaciones** — Prompt optimizado para NotebookLM + esquema de diapositivas.
+
+**Vista `/cambridge/exams`** — Mis exámenes con búsqueda por título/tema, filtros por nivel, tipo, módulo y rango de fechas. Cada examen abre un detalle (`/cambridge/exams/:id`) con render completo de las preguntas, botón descargar PDF y eliminar.
+
+### Módulos genéricos — `ModuleLayout` + tools
+
+Todos los módulos no-Cambridge usan el patrón declarativo. La home del módulo (`ModuleHome`) replica el formato visual de Cambridge: PageHeader + 4 stat cards + grid de tools con numeración romana §I, §II...
+
+---
+
+## Sistema de tools (catálogo declarativo)
+
+Núcleo del catálogo Fase 1: cualquier herramienta se define declarativamente en BD y se ejecuta con un único dispatcher.
+
+### Flujo end-to-end
+
+```
+Profesor abre /eso/byg/byg.exam
+    ↓
+ToolRunner renderiza DynamicForm desde tool.input_schema
+    ↓
+Profesor rellena form y pulsa Generar
+    ↓
+POST /api/modules/bio_geo_eso/tools/byg.exam/run  { input }
+    ↓
+moduleToolsController.run
+    ├─ Valida input contra input_schema
+    ├─ Si !aiAvailable() → demoFixtures.forKind(output_kind, input)
+    ├─ Si IA → handler real (Claude con prompt LOMLOE)
+    ├─ Auto-persiste en library_items
+    └─ Devuelve { output_kind, output, autoSaved: true }
+    ↓
+ResultRenderer pinta según output_kind
+    ↓
+Profesor: descarga PDF · ya está en biblioteca
+```
+
+### Output kinds soportados
+
+`text` · `exercise_set` · `rubric` · `timeline` · `quiz` · `commentary` · `exam`
+
+Cada uno tiene renderer frontend + renderer PDF + fixture demo. Añadir un kind nuevo = añadir las tres piezas.
+
+### Añadir una tool nueva — 3 pasos
+
+1. **Seed** — fila en `backend/src/seeds/002_module_tools.sql`
+2. **Handler** — función en `backend/src/services/tools/<modulo>.js` + registro en `tools/index.js`
+3. **Renderer** — solo si es un `output_kind` nuevo
+
+Sin migraciones, sin tocar el dispatcher.
+
+---
+
+## Corrector OCR genérico
+
+Cualquier módulo declarado en `ocrSubjects.OCR_CONFIG` expone automáticamente un corrector OCR. Mismo flujo que Cambridge, pero parametrizado.
+
+**Módulos con OCR habilitado (11):** Inglés Primaria/ESO, Lengua Primaria/ESO, Matemáticas Primaria/ESO, Conocimiento del Medio, Geografía e Historia, Biología y Geología, Física y Química, Tecnología y Digitalización.
+
+### Flujo
+
+1. Profesor sube foto de la prueba del alumno
+2. Google Vision extrae texto
+3. Claude (Haiku) corrige con system prompt específico de la asignatura
+4. Devuelve `{ totalScore, maxScore, grade, questions[], strengths, improvements, studyRecommendations, overallFeedback }`
+
+En modo demo devuelve fixture coherente sin llamar a IA.
+
+### Añadir OCR a un módulo nuevo
+
+Una sola edición: entrada en `OCR_CONFIG` con `{label, levels, focusOptions, system, userPromptBuilder}`. Frontend y rutas ya están preparados.
+
+---
+
+## Biblioteca unificada
+
+Tabla `library_items` (migración 004) + tabla `exams` (Cambridge legacy) unidas en runtime.
+
+**Auto-persistencia**: cada vez que un profesor genera un resultado con cualquier tool del catálogo Fase 1, el dispatcher lo guarda automáticamente con título derivado del `tool.name + topic/focus`. El modo demo no ensucia BD.
+
+**Vista `/dashboard/resources`**:
+- Búsqueda por título o tema
+- Filtros: módulo (autoinferido del catálogo activo), tipo (autoinferido de los datos)
+- Descargar PDF (regenera on-demand desde el payload, sin storage de blobs)
+- Eliminar con confirmación
+- Click en una card → detalle (`/dashboard/resources/:id`) con render completo + descargar PDF + eliminar
+
+### Endpoints
+
+```
+GET    /api/library/items?search&module&kind&from&to
+GET    /api/library/items/:id
+POST   /api/library/items
+DELETE /api/library/items/:id
+```
+
+---
+
+## Facturación y PDFs
+
+### Listado de facturas
+
+`GET /api/stripe/invoices` resuelve en tres niveles:
+
+1. **Stripe real** — si la org tiene `stripe_customer_id` y la clave Stripe no es placeholder, consulta `stripe.invoices.list({ customer })` y devuelve facturas con `invoice_pdf` (PDF oficial AEAT-correlativo).
+2. **Fixture backend** — 6 meses retroactivos del plan en curso (IVA 21% calculado, nº derivado del orgId).
+3. **Fallback frontend** — 4 facturas precargadas en `Billing.jsx` como ejemplo descargable mientras el backend no responda.
+
+### PDF de factura
+
+Renderer `renderInvoice` ([pdfService.js](backend/src/services/pdfService.js)) produce un PDF con:
+
+- Cabecera con título + número de factura
+- Bloque emisor (CIF, dirección, contacto) / cliente (nombre, CIF, dirección, email)
+- Caja meta de 4 columnas: NÚMERO · EMITIDA · VENCIMIENTO · PAGADA
+- Sello rotado **PAGADA** (verde) o **PENDIENTE** (granate)
+- Periodo facturado
+- Tabla CONCEPTO · CANT. · IMPORTE con periodo por línea
+- Totales alineados: Base imponible → IVA 21% → **TOTAL** → Importe pagado
+- Pie legal RGPD
+
+### Sistema PDF para tools y exámenes
+
+`buildPdf({ type, data, title, subtitle, moduleKey })` con renderers por `type`:
+
+| `type` | Caso |
+|---|---|
+| `exam` | Cambridge legacy |
+| `exercise_set` | Tools Fase 1 — examen + página solucionario |
+| `quiz` | Cuestionarios tipo test con solucionario |
+| `rubric` | Rúbricas con criterios y niveles |
+| `timeline` | Líneas de tiempo |
+| `commentary` | Comentarios de texto guiados |
+| `text` | Markdown ligero (#, ##, -, **bold**) |
+| `invoice` | Facturas |
+| `feedback` / `ocr` | Informes de corrección |
+
+Todos comparten paleta y tipografía "Cuaderno del Catedrático".
+
+---
+
+## Modo demo
+
+`aiAvailable()` detecta clave válida: existe, no es `PLACEHOLDER`, empieza por `sk-ant-`, longitud >= 30.
+
+Si falsea, el sistema entra en **modo demo controlado** sin reventar:
+
+| Subsistema | Comportamiento en demo |
+|---|---|
+| Cambridge exam generator | Híbrido: preguntas reales de `exam_questions` + fixture |
+| Cambridge OCR | `fixtures.ocrCorrection` |
+| Tools del catálogo | `demoFixtures.forKind(output_kind, input)` |
+| OCR genérico por asignatura | `demoFixture` coherente |
+| Facturas | Fixture backend (6 meses) + 4 fallbacks frontend |
+
+`ToolRunner` muestra banner amarillo discreto cuando el resultado es `demo: true`.
+
+### Manejo de errores IA
+
+`callClaude` mapea errores SDK con códigos estables:
+
+| Código | Status | Caso | Mensaje al usuario |
+|---|---|---|---|
+| `AI_NOT_CONFIGURED` | 503 | Clave vacía o placeholder | "La integración con la IA no está configurada en este servidor" |
+| `AI_INVALID_KEY` | 503 | 401/403 de Anthropic | "La clave de la API de IA no es válida" |
+| `AI_RATE_LIMITED` | 429 | 429 de Anthropic | "Has alcanzado el límite de la API. Espera unos segundos" |
+| `AI_UNAVAILABLE` | 502 | 5xx / 529 de Anthropic | "La API de IA está temporalmente saturada" |
+| `BAD_AI_RESPONSE` | 502 | JSON no parseable | "La IA devolvió un resultado no válido" |
+
+Nunca se filtra el body crudo de Anthropic al usuario.
 
 ---
 
@@ -203,13 +369,13 @@ Produce el prompt optimizado para NotebookLM más un esquema de diapositivas det
 
 ```
 superadmin       → Acceso total al sistema (interno VeriGood)
-admin_centro     → Gestiona su colegio: usuarios, módulos, facturación
+admin_centro     → Gestiona su colegio: usuarios, módulos, biblioteca, facturación
 profesor         → Accede a los módulos activos de su organización
 ```
 
-La autenticación usa JWT con dos tokens:
-- **Access token**: 15 minutos. Se renueva automáticamente en el frontend cuando el servidor devuelve `TOKEN_EXPIRED`.
-- **Refresh token**: 7 días, rotativo. Se guarda en BD y se invalida al usarse.
+JWT con dos tokens:
+- **Access token** — 15 minutos. Se renueva automáticamente con `TOKEN_EXPIRED`.
+- **Refresh token** — 7 días, rotativo. Se guarda en BD y se invalida al usarse.
 
 ---
 
@@ -217,12 +383,7 @@ La autenticación usa JWT con dos tokens:
 
 ### Opción A — Con Docker (recomendado)
 
-**Requisito:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado y corriendo.
-
-**Windows:**
-```
-Doble clic en start.bat
-```
+**Windows:** doble clic en `start.bat`
 
 **Mac / Linux:**
 ```bash
@@ -230,26 +391,27 @@ chmod +x start.sh
 ./start.sh
 ```
 
-El script hace todo automáticamente: construye contenedores, ejecuta migraciones, carga datos de demo y abre el navegador en `http://localhost:5173`.
+Construye contenedores, ejecuta migraciones, carga seeds y abre el navegador en `http://localhost:5173`.
 
-### Opción B — Sin Docker (solo Node.js)
-
-**Requisitos:** Node.js 18+ y PostgreSQL 15+ instalados localmente.
+### Opción B — Sin Docker
 
 ```bash
-# 1. Instalar dependencias
+# 1. Instalar
 npm install
 
-# 2. Configurar base de datos
+# 2. Base de datos (orden estricto)
 createdb verigood_local
 psql verigood_local < backend/src/migrations/001_initial_schema.sql
 psql verigood_local < backend/src/migrations/002_modules_catalog.sql
+psql verigood_local < backend/src/migrations/003_module_tools.sql
+psql verigood_local < backend/src/migrations/004_library_items.sql
 psql verigood_local < backend/src/seeds/001_modules_catalog.sql   # SISTEMA
+psql verigood_local < backend/src/seeds/002_module_tools.sql      # SISTEMA — 56 tools
 psql verigood_local < backend/src/seeds/dev_demo_data.sql         # DEMO
 
-# 3. Configurar variables de entorno
-cp .env.example .env.local
-# Editar .env.local con tus credenciales de base de datos
+# 3. Entorno
+cp .env.example backend/.env
+# Editar con DATABASE_URL real
 
 # 4. Arrancar
 npm run dev
@@ -259,95 +421,118 @@ npm run dev
 
 ## Variables de entorno
 
-Copia `.env.example` a `.env.local` y rellena los valores:
-
 ```env
 # Base de datos
-DATABASE_URL=postgresql://user:password@localhost:5432/verigood
+DATABASE_URL=postgresql://user:pass@localhost:5432/verigood
+DB_SSL=false
 
 # JWT
-JWT_SECRET=tu_secreto_muy_largo_aqui
-JWT_REFRESH_SECRET=otro_secreto_para_refresh
+JWT_SECRET=cambia_esto
+JWT_REFRESH_SECRET=otro_secreto
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
 
-# Claude API (Anthropic)
+# Anthropic — REQUIRED para no entrar en modo demo
 ANTHROPIC_API_KEY=sk-ant-...
+CLAUDE_HAIKU_MODEL=claude-haiku-4-5-20251001
+CLAUDE_SONNET_MODEL=claude-sonnet-4-6
 
-# Google Vision (para OCR real)
-GOOGLE_APPLICATION_CREDENTIALS=/ruta/a/service-account.json
+# Google Vision (OCR real)
+GOOGLE_APPLICATION_CREDENTIALS=/ruta/al/service-account.json
+GOOGLE_CLOUD_PROJECT_ID=verigood-...
 
 # Stripe
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_STARTER=price_...
+STRIPE_PRICE_COLEGIO=price_...
 
-# Modo demo (true = sin IA real, respuestas simuladas)
-DEMO_MODE=true
-
-# URLs
-FRONTEND_URL=http://localhost:5173
+# App
+PORT=3001
+CORS_ORIGINS=https://verigood.es,http://localhost:5173
+FRONTEND_URL=https://verigood.es
+NODE_ENV=production
 ```
 
-Con `DEMO_MODE=true` la plataforma funciona completamente sin ninguna clave de API. Todas las respuestas de IA son simuladas con datos realistas.
+Con `ANTHROPIC_API_KEY=sk-ant-PLACEHOLDER` (o ausente) la plataforma funciona en **modo demo controlado**: todas las respuestas IA son fixtures plausibles y la facturación cae a fixtures coherentes. Pensado para entornos pre-producción y demos comerciales.
 
 ---
 
 ## Base de datos
 
-Arquitectura multi-tenant. Las migraciones se ejecutan en orden (`001_initial_schema.sql`, `002_modules_catalog.sql`) mediante `backend/migrations/run.js`, que mantiene `schema_migrations` para evitar re-ejecuciones. Tablas principales:
+Arquitectura multi-tenant por `organization_id`. Migraciones en orden estricto.
+
+**Tablas principales:**
 
 ```
-organizations          → Colegio raíz (organization_id en toda la BD)
-                         + onboarding_completed_at, created_with_demo_data
-users                  → Profesores y admins
-subscriptions          → Plan activo por organización
-modules                → Catálogo cerrado de módulos (sistema, mismo en prod)
-organization_modules   → Pivote: módulos activos por organización
-courses                → Asignaturas / cursos
-groups                 → Grupos dentro de un curso
-group_professors       → Relación N:M profesores-grupos
-resources              → Biblioteca de recursos compartidos
-exam_questions         → Banco de preguntas verificadas
-exams                  → Exámenes generados
-exam_results           → Resultados de correcciones OCR
-dynamics               → Dinámicas de clase generadas
-presentation_prompts   → Prompts de presentación generados
-usage_logs             → Registro de uso para analytics
-refresh_tokens         → Tokens de refresco activos
+organizations          → Colegio raíz + stripe_customer_id + plan + onboarding_completed_at
+users                  → superadmin | admin_centro | profesor
+refresh_tokens         → rotating tokens
+modules                → Catálogo cerrado (23 módulos)
+organization_modules   → Pivote: módulos activos por org
+module_tools           → 56 tools con input_schema + output_kind
+module_tool_bindings   → Pivote: qué tools tiene cada módulo
+library_items          → Biblioteca unificada (outputs de cualquier tool)
+exams                  → Cambridge legacy (questions JSONB)
+exam_questions         → Banco curado Cambridge (BD híbrida)
+exam_attempts          → Correcciones OCR Cambridge
+usage_logs             → Consumo IA por org/user/tool
+resources              → DEPRECATED (hoy = library_items + exams)
 ```
-
 
 ---
 
 ## API REST
 
-Base URL: `https://verigood.com/api` (producción) · `http://localhost:3001/api` (local)
+Base URL: `https://verigood.es/api` (producción) · `http://localhost:3001/api` (local)
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
+| **Auth** | | |
 | POST | `/auth/login` | Iniciar sesión |
-| POST | `/auth/register` | Registrar organización + admin |
+| POST | `/auth/register` | Registrar org + admin |
 | POST | `/auth/refresh` | Renovar access token |
 | POST | `/auth/logout` | Cerrar sesión |
-| GET | `/auth/me` | Usuario actual con suscripción |
-| GET | `/organizations/:id` | Datos de la organización |
-| GET | `/modules` | Catálogo global de módulos |
-| GET | `/organizations/:id/modules` | Módulos activados |
+| GET | `/auth/me` | Usuario actual |
+| **Módulos** | | |
+| GET | `/modules` | Catálogo global |
+| GET | `/organizations/:id/modules` | Módulos activos de la org |
 | POST | `/organizations/:id/modules/:moduleId/activate` | Activar módulo |
-| DELETE | `/organizations/:id/modules/:moduleId` | Desactivar módulo |
-| GET | `/organizations/:id/onboarding-state` | Estado del onboarding |
-| POST | `/organizations/:id/onboarding-state/complete` | Marcar onboarding completado |
-| GET | `/users` | Lista de usuarios paginada |
+| DELETE | `/organizations/:id/modules/:moduleId` | Desactivar |
+| GET | `/organizations/:id/onboarding-state` | Estado onboarding |
+| POST | `/organizations/:id/onboarding-state/complete` | Marcar completado |
+| **Tools (catálogo Fase 1)** | | |
+| GET | `/modules/:moduleId/tools` | Tools vinculadas |
+| POST | `/modules/:moduleId/tools/:toolKey/run` | Ejecutar (auto-persiste en biblioteca) |
+| **OCR genérico** | | |
+| GET | `/modules/:moduleId/ocr/config` | Config pública para autoconfigurar UI |
+| POST | `/modules/:moduleId/ocr/correct` | Multipart `examImage` → corrección |
+| **Biblioteca** | | |
+| GET | `/library/items` | Listar con filtros |
+| GET | `/library/items/:id` | Detalle |
+| POST | `/library/items` | Guardar manual (el dispatcher ya lo hace auto) |
+| DELETE | `/library/items/:id` | Eliminar |
+| **Cambridge** | | |
 | POST | `/cambridge/exams/generate` | Generar examen Cambridge |
-| GET | `/cambridge/exams` | Listar exámenes guardados |
-| POST | `/cambridge/correct/ocr` | Corregir examen por imagen |
-| GET | `/cambridge/corrections` | Historial de correcciones |
-| POST | `/cambridge/dynamics/generate` | Generar dinámica de clase |
-| POST | `/cambridge/presentations/generate` | Generar prompt presentación |
+| POST | `/cambridge/exams/save` | Guardar examen |
+| GET | `/cambridge/exams` | Listar (con metadata para filtros) |
+| GET | `/cambridge/exams/:id` | Detalle completo con preguntas |
+| DELETE | `/cambridge/exams/:id` | Eliminar |
+| POST | `/cambridge/ocr/correct` | Multipart `examImage` |
+| POST | `/cambridge/dynamics/generate` | Dinámica de aula |
+| POST | `/cambridge/presentations/generate` | Prompt NotebookLM |
+| **Stripe / Facturación** | | |
 | GET | `/stripe/plans` | Planes disponibles |
 | POST | `/stripe/checkout` | Crear sesión de pago |
 | POST | `/stripe/portal` | Portal de facturación |
-| GET | `/stats/dashboard` | Estadísticas de uso |
+| GET | `/stripe/invoices` | Histórico (Stripe real con fallback fixture) |
+| GET | `/stripe/invoices/:id` | Detalle de una factura |
+| POST | `/stripe/webhook` | Raw body (registrado ANTES de express.json) |
+| **PDF** | | |
+| POST | `/pdf/render` | Binario `application/pdf` (type + data) |
+| GET | `/pdf/status` | Estado AI/demo |
 
-Todos los endpoints (salvo `/auth/*` y `/stripe/plans`) requieren header `Authorization: Bearer <token>`.
+Todos los endpoints (salvo `/auth/*`, `/stripe/plans`, `/stripe/webhook`) requieren `Authorization: Bearer <token>`.
 
 ---
 
@@ -358,36 +543,32 @@ Todos los endpoints (salvo `/auth/*` y `/stripe/plans`) requieren header `Author
 Materialidad de aula real ejecutada con sobriedad académica. Nada infantil, nada decorativo por decorar.
 
 **Tipografía:**
-- Display: Reckless Neue (serif contemporánea, italics expresivas para módulos)
-- Body: Söhne (sans neutra, presencia editorial)
-- Manuscrito: Caveat — uso quirúrgico, solo anotaciones de corrección. Nunca UI funcional.
-- Mono: JetBrains Mono para puntuaciones, códigos y metadatos (`A2 · KEY · 47/60`)
+- Display: Libre Baskerville (`font-display`) — títulos con italics expresivas
+- Body: Inter — sans neutra
+- Manuscrito: Caveat (`font-caveat`) — solo anotaciones de corrección
+- Mono: JetBrains Mono (`font-mono`) — puntuaciones, códigos, metadatos
 
 **Paleta:**
 
 | Token | Hex | Uso |
 |-------|-----|-----|
-| Papel | `#EDE6D6` | Base de todo |
-| Papel hover | `#E5DCC7` | Estados hover de fondo |
+| Papel | `#EDE6D6` | Fondo principal |
 | Tinta | `#14182B` | Texto principal |
-| Marino | `#1F2A4D` | Autoridad, headers |
-| Granate | `#6B1F2A` | Solo correcciones y errores reales |
-| Amarillo | `#E8D89A` | Solo subrayado de información relevante |
-| Línea | `#B8A988` | Bordes y reglas |
+| Marino | `#1F2A4D` | Acción primaria, Cambridge |
+| Granate | `#6B1F2A` | Errores, Lengua |
+| Amarillo | `#E8D89A` | Avisos, modo demo |
+| Línea | `#B8A988` | Bordes |
 
-El granate y el amarillo tienen peso semántico. Cuando aparecen, significan algo. Nunca usarlos como decoración.
+Granate y amarillo tienen peso semántico. Cuando aparecen, significan algo.
 
 **Gestos diferenciadores:**
-- Fondo con rejilla cuadriculada 24px al 8% de opacidad (estilo cuaderno Seyès francés)
-- Overlay SVG de grano de papel (`opacity: 0.04`)
-- Marginalia romana al margen izquierdo: § I, § II, § III en granate apagado
-- Corrección OCR animada con círculo manuscrito dibujándose en tiempo real (`stroke-dasharray`)
-- Cards con esquina superior derecha doblada (`clip-path` CSS + sombra interior)
-- Hover con subrayado highlighter `#E8D89A` animado de izquierda a derecha en 200ms
-- Sello editorial granate ligeramente desalineado para logo y puntuaciones finales
-- Todos los números en JetBrains Mono (puntuaciones, niveles, códigos)
+- Fondo cuadrícula 24px al 8% opacidad
+- Marginalia romana: § I, § II, § III en granate apagado
+- Cards con esquina doblada (`clip-path`)
+- Score stamps rotados con opacidad
+- Sombras secas `box-shadow: 2px 2px 0 rgba(184,169,136,0.4)`
 
-**Prohibido:** `border-radius` > 2px · gradientes · sombras blandas (`box-shadow` difuso) · iconos Lucide genéricos · microinteracciones nerviosas · emoji.
+**Prohibido:** `border-radius` > 2px · gradientes · sombras blandas · iconos genéricos · emoji.
 
 ---
 
@@ -396,28 +577,32 @@ El granate y el amarillo tienen peso semántico. Cuando aparecen, significan alg
 ```bash
 # En el VPS (Ubuntu 22.04, Madrid)
 
-# 1. Clonar repositorio
 git clone https://github.com/tu-usuario/verigood.git
 cd verigood
 
-# 2. Configurar variables
-cp .env.example .env
-nano .env  # Rellenar con credenciales de producción
+cp .env.example backend/.env
+nano backend/.env  # credenciales reales
 
-# 3. Arrancar
-docker compose up --build -d
+chmod +x deploy.sh
+./deploy.sh
 
-# 4. Configurar Nginx + SSL
-certbot --nginx -d verigood.com -d www.verigood.com
+# Comando rápido si ya está configurado
+./deploy.sh --skip-migrate
+
+# PM2
+pm2 status
+pm2 logs verigood-backend
+pm2 reload ecosystem.config.js --env production
+
+# SSL
+certbot --nginx -d verigood.es -d www.verigood.es
 ```
-
-El `docker-compose.yml` de producción incluye PostgreSQL con volumen persistente, backend Node.js y frontend servido por Nginx con SSL, gzip y caché de assets estáticos.
 
 ---
 
 ## Credenciales de demo
 
-Disponibles tras ejecutar el seed de demo con `DEMO_MODE=true`:
+Tras ejecutar `dev_demo_data.sql`:
 
 | Rol | Email | Contraseña |
 |-----|-------|-----------|
@@ -428,27 +613,34 @@ Disponibles tras ejecutar el seed de demo con `DEMO_MODE=true`:
 
 ## Flujo de desarrollo con agentes
 
-El directorio `agentes/` documenta cinco perfiles de agente que se aplican en secuencia para cada feature: **arquitecto → desarrollador → auditor → tester → documentador**. Ver `agentes/README.md` para el detalle de cada rol y cuándo saltar pasos (bugs, refactors, etc.).
+El directorio `agentes/` documenta cinco perfiles que se aplican en secuencia para cada feature:
+
+```
+arquitecto-software → desarrollador → auditor → tester → documentador
+```
+
+Ver `agentes/README.md` para el detalle de cada rol y cuándo saltar pasos.
 
 ---
 
 ## Roadmap
 
-**Layouts de módulos pendientes** (catálogo ya creado, falta UI propia):
-- Primaria: Inglés, Plástica, Música, Religión, Ed. Ciudadanía
-- ESO: Inglés, Geografía e Historia, Biología y Geología, Física y Química
+**Hecho:**
+- ✅ Catálogo declarativo de 23 módulos + 56 tools implementadas
+- ✅ Cambridge con 4 agentes + filtros avanzados + detalle + PDF
+- ✅ Corrector OCR genérico para 11 asignaturas
+- ✅ Biblioteca unificada con auto-persistencia
+- ✅ Sistema PDF para todos los `output_kind` + facturas
+- ✅ Modo demo controlado en todos los subsistemas
+- ✅ Facturación con fallback fixture y PDF oficial Stripe
 
-**Etapas futuras:**
-- Bachillerato (Fase 2)
-
-**Funcionalidades pendientes:**
-- Exportación de exámenes a PDF con formato oficial Cambridge
-- Sistema de notificaciones in-app
-- Panel de superadmin (gestión global de organizaciones)
-- Integración completa Google Vision (actualmente mockeada en dev)
+**En curso / próximos pasos:**
+- Banco de preguntas curadas por asignatura (estilo `exam_questions` de Cambridge)
 - Tests unitarios (Jest) y e2e (Playwright)
-- CI/CD pipeline (GitHub Actions → deploy automático al VPS)
+- CI/CD pipeline (GitHub Actions → deploy automático)
+- Panel de superadmin completo (organizaciones, facturación global)
+- Bachillerato (Fase 2)
 
 ---
 
-*VeriGood — Construido con Claude (Anthropic) · 2025*
+*VeriGood — Plataforma SaaS de IA para colegios españoles · 2026*

@@ -11,9 +11,10 @@ Monorepo npm workspaces: `/frontend` (React + Vite) + `/backend` (Node + Express
 |------|-----------|
 | Frontend | React 18, Vite, Tailwind CSS, React Query v5, Zustand v4, React Router v6, Axios |
 | Backend | Node.js 20, Express, PostgreSQL (pg), JWT auth |
-| IA | Anthropic SDK — `claude-haiku-4-5-20251001` (correcciones), `claude-sonnet-4-6` (generación) |
+| IA | Anthropic SDK — `claude-haiku-4-5-20251001` (correcciones/tools), `claude-sonnet-4-6` (generación larga) |
 | OCR | Google Cloud Vision API |
-| Pagos | Stripe (checkout sessions, customer portal, webhooks) |
+| Pagos | Stripe (checkout sessions, customer portal, webhooks, facturas oficiales) |
+| PDF | PDFKit — renderers propios por output_kind |
 | Deploy | Nginx + PM2 + VPS Madrid |
 
 ---
@@ -29,7 +30,7 @@ verigood/
 ├── deploy.sh                 # script de despliegue VPS
 │
 ├── agentes/                  # Agentes especializados de desarrollo (docs md)
-│   ├── README.md             # Flujo: arquitecto → dev → auditor → tester → documentador
+│   ├── README.md
 │   ├── arquitecto-software.md
 │   ├── desarrollador.md
 │   ├── auditor.md
@@ -42,137 +43,377 @@ verigood/
 │       ├── config/
 │       │   └── database.js   # pg Pool, helper query()
 │       ├── middleware/
-│       │   └── auth.js       # authenticate, authorize, requireModule (lee organization_modules)
+│       │   └── auth.js       # authenticate, authorize, requireModule, requireModuleActive
+│       ├── utils/
+│       │   └── aiAvailable.js # detecta si ANTHROPIC_API_KEY es válida (no placeholder)
 │       ├── controllers/
 │       │   ├── authController.js
 │       │   ├── usersController.js
-│       │   ├── modulesController.js      # catálogo, activación, onboarding-state
+│       │   ├── modulesController.js          # catálogo, activación, onboarding-state
+│       │   ├── moduleToolsController.js      # dispatcher tools + auto-persistencia en biblioteca
+│       │   ├── moduleOcrController.js        # config + corrección OCR genérica por asignatura
+│       │   ├── libraryController.js          # CRUD library_items
 │       │   └── organizationsController.js
 │       ├── routes/
 │       │   ├── auth.js
 │       │   ├── users.js
 │       │   ├── organizations.js
-│       │   ├── modules.js                # catálogo + toggle + onboarding
-│       │   ├── cambridge.js
-│       │   ├── lengua.js
-│       │   ├── matematicas.js
-│       │   ├── medio.js
-│       │   └── stripe.js
+│       │   ├── modules.js                    # catálogo + toggle + onboarding
+│       │   ├── moduleTools.js                # GET tools + POST run (dispatcher)
+│       │   ├── moduleOcr.js                  # GET config + POST correct (multer)
+│       │   ├── library.js                    # GET/POST/DELETE library_items
+│       │   ├── cambridge.js                  # 4 agentes + GET/:id + DELETE/:id
+│       │   ├── lengua.js                     # legacy
+│       │   ├── matematicas.js                # legacy
+│       │   ├── medio.js                      # legacy
+│       │   ├── stripe.js                     # plans, checkout, portal, invoices, webhook
+│       │   └── pdf.js                        # POST /render genérico
 │       ├── services/
-│       │   ├── claudeService.js          # callClaude(), callClaudeJSON(), parseJSON()
-│       │   ├── examGeneratorService.js   # híbrido DB + IA
-│       │   ├── ocrCorrectorService.js    # Google Vision → Claude Haiku
+│       │   ├── claudeService.js              # callClaude (con códigos AI_NOT_CONFIGURED/INVALID_KEY/…)
+│       │   ├── examGeneratorService.js       # híbrido BD + IA (Cambridge)
+│       │   ├── ocrCorrectorService.js        # Google Vision + Claude Haiku (Cambridge)
+│       │   ├── ocrSubjectCorrectorService.js # OCR genérico para asignaturas
+│       │   ├── ocrSubjects.js                # config declarativa de qué módulos tienen OCR
 │       │   ├── dynamicsService.js
 │       │   ├── presentationsService.js
-│       │   ├── lenguaService.js
-│       │   └── matematicasService.js
+│       │   ├── lenguaService.js              # legacy
+│       │   ├── matematicasService.js         # legacy
+│       │   ├── pdfService.js                 # renderers por output_kind + invoice
+│       │   └── tools/
+│       │       ├── index.js                  # registro central de handlers
+│       │       ├── consistencyCheck.js       # avisa BD ↔ código en arranque
+│       │       ├── demoFixtures.js           # fixtures genéricos por output_kind
+│       │       ├── ingles.js
+│       │       ├── plastica.js
+│       │       ├── musica.js
+│       │       ├── religion.js
+│       │       ├── ciudadania.js
+│       │       ├── geoHistoria.js
+│       │       ├── bioGeo.js
+│       │       ├── fisQuim.js
+│       │       ├── matematicasPrimaria.js
+│       │       ├── matematicasEso.js
+│       │       ├── lenguaPrimaria.js
+│       │       ├── lenguaEso.js
+│       │       ├── medioPrimaria.js
+│       │       ├── edFisicaPrimaria.js
+│       │       ├── edFisicaEso.js
+│       │       ├── edArtisticaPrimaria.js
+│       │       ├── tecnoDigitalEso.js
+│       │       ├── epvaEso.js
+│       │       ├── valoresEticosEso.js
+│       │       └── tutoriasEso.js
 │       ├── migrations/
 │       │   ├── 001_initial_schema.sql
-│       │   └── 002_modules_catalog.sql   # tablas modules + organization_modules + onboarding
+│       │   ├── 002_modules_catalog.sql       # tablas modules + organization_modules + onboarding
+│       │   ├── 003_module_tools.sql          # tablas module_tools + module_tool_bindings
+│       │   └── 004_library_items.sql         # tabla library_items (biblioteca unificada)
 │       └── seeds/
-│           ├── 001_modules_catalog.sql   # SISTEMA — catálogo cerrado de módulos (también en prod)
-│           └── dev_demo_data.sql         # DEMO — admin@verigood.com / demo1234
+│           ├── 001_modules_catalog.sql       # SISTEMA — catálogo cerrado de módulos
+│           ├── 002_module_tools.sql          # SISTEMA — 56 tools + bindings
+│           └── dev_demo_data.sql             # DEMO — admin@verigood.com / demo1234
 │
 └── frontend/
     └── src/
         ├── App.jsx                       # BrowserRouter, todas las rutas
         ├── main.jsx                      # QueryClient, StrictMode
-        ├── index.css                     # design system completo (clases CSS custom)
+        ├── index.css                     # design system completo
         ├── stores/
         │   └── authStore.js              # Zustand + persist
         ├── services/
-        │   └── api.js                    # Axios + interceptor JWT refresh
+        │   └── api.js                    # Axios + interceptor JWT + APIs
         ├── components/
         │   ├── ui/
         │   │   ├── index.jsx             # Button, Card, TagCloud, ProgressBar, etc.
-        │   │   └── EmptyState.jsx        # estado vacío reutilizable
+        │   │   ├── DownloadPdfButton.jsx
+        │   │   └── EmptyState.jsx
+        │   ├── tools/
+        │   │   ├── ToolRunner.jsx        # ejecuta tool + PDF + biblioteca
+        │   │   ├── DynamicForm.jsx       # form generado desde input_schema
+        │   │   └── results/
+        │   │       ├── ResultRenderer.jsx
+        │   │       ├── TextResult.jsx
+        │   │       ├── ExerciseSetResult.jsx
+        │   │       ├── RubricResult.jsx
+        │   │       ├── TimelineResult.jsx
+        │   │       ├── QuizResult.jsx
+        │   │       └── CommentaryResult.jsx
         │   ├── onboarding/
-        │   │   └── OnboardingHero.jsx    # hero de bienvenida con 3 CTAs
+        │   │   └── OnboardingHero.jsx
         │   └── layout/
         │       ├── Topbar.jsx
         │       ├── Sidebar.jsx
-        │       └── SidebarStage.jsx      # agrupación por etapa (Primaria / ESO)
+        │       └── SidebarStage.jsx
         └── pages/
             ├── auth/                     # LoginPage, RegisterPage
-            ├── landing/                  # LandingPage (pública, marketing)
+            ├── landing/                  # LandingPage (pública)
             ├── superadmin/               # Dashboard, Organizations, Billing, System
-            ├── institutional/            # Dashboard, Users, Modules, Stats, Billing
-            ├── placeholder/              # ModulePlaceholderPage (módulos sin layout propio)
-            ├── cambridge/                # Home, ExamGenerator, ExamsList, OcrCorrector,
-            │                             # DynamicsGenerator, PresentationGenerator
-            ├── lengua/                   # Home, ExerciseGenerator, EssayCorrector,
-            │                             # SyntaxAnalysis, TextCommentary, LenguaDynamics
-            ├── matematicas/              # Home, ProblemGenerator, PhotoCorrector, ExerciseSeries
-            └── medio/                    # Home, ThematicSheets, Questionnaires, STEMActivities
+            ├── institutional/            # Dashboard, Users, Modules, Stats, Billing,
+            │                             # Resources (biblioteca), ResourceDetail
+            ├── module/                   # ModuleLayout, ModuleHome (Fase 1),
+            │                             # ToolPage, ModuleOcrPage (OCR genérico)
+            ├── cambridge/                # Home, ExamGenerator, ExamsList, ExamDetail,
+            │                             # OcrCorrector, DynamicsGenerator, PresentationGenerator
+            ├── lengua/                   # legacy
+            ├── matematicas/              # legacy
+            └── medio/                    # legacy
 ```
 
 ---
 
 ## Auth & Roles
 
-JWT access tokens (15 min) + rotating refresh tokens (7 días, almacenados en PostgreSQL).
+JWT access tokens (15 min) + rotating refresh tokens (7 días, en PostgreSQL).
 
 | Role | Acceso |
 |------|--------|
 | `superadmin` | `/superadmin/*` — gestiona organizaciones, facturación global |
-| `admin_centro` | `/dashboard/*` — gestiona usuarios, módulos, stats del colegio |
-| `profesor` | `/dashboard` (sólo lectura) + módulos activos de su org |
+| `admin_centro` | `/dashboard/*` — gestiona usuarios, módulos, stats, biblioteca, facturación |
+| `profesor` | `/dashboard` (lectura) + módulos activos de su org |
 
-El middleware `requireModule(name)` comprueba `organization.active_modules[]` en la DB antes de cada ruta IA.
+`requireModule(name)` y `requireModuleActive` (variante paramétrica que lee `moduleId` de `req.params`) comprueban `organization_modules` antes de cada ruta IA.
 
 ---
 
 ## Módulos
 
-Los módulos viven en un **catálogo cerrado** (tabla `modules`, seed `001_modules_catalog.sql`).
-Se activan por organización vía `organization_modules` (pivote). El antiguo `organizations.active_modules[]` (ENUM array) queda DEPRECATED y se elimina en migración 003.
+Catálogo cerrado (tabla `modules`, seed `001_modules_catalog.sql`).
+Se activan por organización vía `organization_modules` (pivote). El antiguo `organizations.active_modules[]` queda DEPRECATED.
 
-### Catálogo Fase 1
+### Catálogo Fase 1 — estado de implementación
 
 **Primaria** (`stage = 'primaria'`):
 
-| ID | Nombre | Categoría | Ruta |
-|----|--------|-----------|------|
-| `matematicas_primaria` | Matemáticas | asignatura | `/primaria/matematicas` |
-| `lengua_primaria` | Lengua castellana y literatura | asignatura | `/primaria/lengua` |
-| `ingles_primaria` | Inglés | asignatura | `/primaria/ingles` |
-| `medio_primaria` | Conocimiento del medio natural, social y cultural | asignatura | `/primaria/medio` |
-| `plastica_primaria` | Plástica | asignatura | `/primaria/plastica` |
-| `ed_fisica_primaria` | Educación física | asignatura | `/primaria/ed-fisica` |
-| `musica_primaria` | Música | asignatura | `/primaria/musica` |
-| `ed_artistica_primaria` | Educación artística | asignatura | `/primaria/ed-artistica` |
-| `religion_primaria` | Religión | asignatura | `/primaria/religion` |
-| `ciudadania_primaria` | Ed. Ciudadanía | asignatura | `/primaria/ciudadania` |
-
-> `ed_artistica_primaria` (LOMLOE: paraguas que engloba Plástica + Música) coexiste con `plastica_primaria` y `musica_primaria`. El centro elige granularidad al activar.
+| ID | Nombre | Tools | OCR |
+|----|--------|:----:|:---:|
+| `matematicas_primaria` | Matemáticas | 3 | ✅ |
+| `lengua_primaria` | Lengua castellana | 3 | ✅ |
+| `ingles_primaria` | Inglés | 3 | ✅ |
+| `medio_primaria` | Conocimiento del medio | 3 | ✅ |
+| `plastica_primaria` | Plástica | 2 | — |
+| `ed_fisica_primaria` | Educación física | 3 | — |
+| `musica_primaria` | Música | 3 | — |
+| `ed_artistica_primaria` | Educación artística | 3 | — |
+| `religion_primaria` | Religión | 2 | — |
+| `ciudadania_primaria` | Ed. Ciudadanía | 2 | — |
 
 **ESO** (`stage = 'eso'`):
 
-| ID | Nombre | Categoría | Ruta |
-|----|--------|-----------|------|
-| `lengua_eso` | Lengua castellana y literatura | asignatura | `/eso/lengua` |
-| `matematicas_eso` | Matemáticas | asignatura | `/eso/matematicas` |
-| `ingles_eso` | Inglés | asignatura | `/eso/ingles` |
-| `cambridge` | Cambridge | preparacion_examen | `/eso/cambridge` → `/cambridge` |
-| `geo_historia_eso` | Geografía e Historia | asignatura | `/eso/geh` |
-| `ed_fisica_eso` | Educación física | asignatura | `/eso/ed-fisica` |
-| `bio_geo_eso` | Biología y Geología | asignatura | `/eso/byg` |
-| `tecno_digital_eso` | Tecnología y digitalización | asignatura | `/eso/tecno-digital` |
-| `fis_quim_eso` | Física y Química | asignatura | `/eso/fyq` |
-| `epva_eso` | Educación plástica, visual y audiovisual | asignatura | `/eso/epva` |
-| `religion_eso` | Religión | religion_valores | `/eso/religion` |
-| `valores_eticos_eso` | Educación en valores éticos | religion_valores | `/eso/valores-eticos` |
-| `tutorias_eso` | Tutorías | accion_tutorial | `/eso/tutorias` |
+| ID | Nombre | Tools | OCR |
+|----|--------|:----:|:---:|
+| `lengua_eso` | Lengua castellana y literatura | 4 | ✅ |
+| `matematicas_eso` | Matemáticas | 3 | ✅ |
+| `ingles_eso` | Inglés | 3 | ✅ |
+| `cambridge` | Cambridge | layout custom | ✅ (dedicado) |
+| `geo_historia_eso` | Geografía e Historia | 3 | ✅ |
+| `ed_fisica_eso` | Educación física | 3 | — |
+| `bio_geo_eso` | Biología y Geología | 3 | ✅ |
+| `tecno_digital_eso` | Tecnología y digitalización | 3 | ✅ |
+| `fis_quim_eso` | Física y Química | 1 | ✅ |
+| `epva_eso` | EPVA | 3 | — |
+| `religion_eso` | Religión | 2 | — |
+| `valores_eticos_eso` | Valores éticos | 3 | — |
+| `tutorias_eso` | Tutorías | 3 | — |
 
-**Categorías** (`modules.category`): `asignatura`, `preparacion_examen`, `religion_valores`, `accion_tutorial`. Es un dominio abierto (`VARCHAR`); añadir más sólo requiere actualizar `CATEGORY_LABELS`/`CATEGORY_ORDER` en `Modules.jsx`.
+**Total: 56 tools implementadas + 11 módulos con OCR genérico + Cambridge dedicado.**
 
-Sólo `cambridge` tiene layout propio. El resto renderizan `ModulePlaceholderPage` hasta que se construya su layout. Las etapas vacías (sin módulos activos) se ocultan en la sidebar.
+Solo Cambridge tiene layout propio (caso especial: preparación de examen con generación híbrida BD+IA, OCR específico, dinámicas y presentaciones). El resto renderiza el patrón genérico `ModuleLayout` + `ModuleHome` + `ToolPage` desde el catálogo.
 
-Para añadir un módulo nuevo: (1) insertar fila en el seed `001_modules_catalog.sql`, (2) añadir su `<Route>` placeholder en `App.jsx`, (3) si usa un `icon` nuevo, mapearlo en `ICON_GLYPHS` de `SidebarStage.jsx`. Sin cambios de esquema ni de controlador.
+### Categorías
 
-### Módulos legacy (en vías de rediseño)
+`modules.category` (VARCHAR abierto): `asignatura`, `preparacion_examen`, `religion_valores`, `accion_tutorial`.
 
-Las rutas `/lengua`, `/matematicas`, `/medio` siguen montadas en `App.jsx` y siguen usando los IDs antiguos (`espanol`, `matematicas`, `medio`) que **no están en el catálogo nuevo** — quedarán inalcanzables hasta que se decida su mapeo al catálogo Fase 1.
+### Cómo añadir un módulo nuevo
+
+1. Insertar fila en `001_modules_catalog.sql`.
+2. Añadir `<Route>` en `App.jsx` apuntando a `ModuleLayout` con su `moduleId`.
+3. Si usa un `icon` nuevo, mapearlo en `ICON_GLYPHS` de `SidebarStage.jsx`.
+4. Si tiene OCR: añadir entrada en `OCR_CONFIG` de `backend/src/services/ocrSubjects.js`.
+
+Sin cambios de esquema ni de controlador.
+
+---
+
+## Sistema de tools (catálogo declarativo)
+
+Núcleo del catálogo Fase 1: cualquier herramienta se define declarativamente en BD y se enrola con un único dispatcher.
+
+### Flujo
+
+```
+Profesor ejecuta tool
+    ↓
+POST /api/modules/:moduleId/tools/:toolKey/run  { input }
+    ↓
+moduleToolsController.run
+    ↓
+1. Lee tool de BD (input_schema, output_kind, default_model)
+2. Valida input contra input_schema
+3. Si !aiAvailable() → demoFixtures.forKind(output_kind, input) → fixture realista
+4. Si IA → toolsRegistry.run(toolKey, input, ctx) → handler real
+5. Auto-persiste resultado en library_items (best-effort)
+6. Devuelve { output_kind, output, autoSaved: true, demo?: true }
+```
+
+### Output kinds soportados
+
+`text` · `exercise_set` · `rubric` · `timeline` · `quiz` · `commentary` · `exam` (Cambridge legacy)
+
+Cada uno tiene:
+- Renderer frontend en `components/tools/results/`
+- Renderer PDF en `backend/src/services/pdfService.js`
+- Fixture demo en `backend/src/services/tools/demoFixtures.js`
+
+### Añadir una tool nueva en 3 pasos
+
+1. **Seed** — fila en `backend/src/seeds/002_module_tools.sql`:
+   ```sql
+   INSERT INTO module_tools (key, name, description, output_kind, input_schema, sort_order) VALUES
+     ('miclave.minueva', 'Mi herramienta', 'Descripción.', 'text',
+      '{"fields":[{"key":"x","label":"X","type":"text","required":true}]}'::jsonb, 10);
+   INSERT INTO module_tool_bindings (module_id, tool_key, sort_order) VALUES
+     ('algun_modulo_id', 'miclave.minueva', 10);
+   ```
+
+2. **Handler** — función en `backend/src/services/tools/<modulo>.js`:
+   ```js
+   exports.minueva = async (input, ctx) => {
+     const text = await callClaude({ system: '...', messages: '...', model: 'haiku' });
+     return { output_kind: 'text', output: text };
+   };
+   ```
+   Registrar en `tools/index.js`:
+   ```js
+   'miclave.minueva': miModulo.minueva,
+   ```
+
+3. **Renderer (opcional)** — solo si el `output_kind` no existe aún. Si reusas uno, NO hay que tocar nada.
+
+`consistencyCheck.js` avisa al arranque si hay discrepancia BD ↔ código.
+
+---
+
+## Corrector OCR genérico por asignatura
+
+Cualquier módulo declarado en `ocrSubjects.OCR_CONFIG` expone automáticamente un corrector OCR. Mismo flujo que Cambridge pero parametrizado.
+
+### Flujo
+
+```
+Profesor sube foto del examen del alumno
+    ↓
+POST /api/modules/:moduleId/ocr/correct  multipart examImage
+    ↓
+moduleOcrController.correctOcr
+    ↓
+1. Verifica que el módulo tiene OCR habilitado en OCR_CONFIG
+2. Google Vision → extrae texto
+3. Si !aiAvailable() → demoFixture coherente
+4. Si IA → Claude con system+prompt específico de la asignatura
+5. Loguea uso
+6. Devuelve { totalScore, maxScore, grade, questions[], strengths, improvements, studyRecommendations, overallFeedback }
+```
+
+### Frontend
+
+- `ModuleOcrPage.jsx` (genérico) carga `GET /modules/:moduleId/ocr/config` para autoconfigurar niveles, focus options y modos de feedback.
+- `ModuleLayout` muestra entrada "Corrector OCR" en la sidebar si `ocrEnabled = true`.
+- `ModuleHome` lo expone como una tool más (§ II) en la grid.
+
+### Módulos con OCR habilitado (11)
+
+`ingles_primaria`, `ingles_eso`, `lengua_primaria`, `lengua_eso`, `matematicas_primaria`, `matematicas_eso`, `medio_primaria`, `geo_historia_eso`, `bio_geo_eso`, `fis_quim_eso`, `tecno_digital_eso`. Cambridge mantiene su OCR dedicado.
+
+### Cómo activar OCR en un módulo nuevo
+
+Una edición: entrada en `OCR_CONFIG` de `backend/src/services/ocrSubjects.js` con `{label, levels, focusOptions, system, userPromptBuilder}`. Frontend y rutas ya están preparados.
+
+---
+
+## Biblioteca unificada
+
+Tabla `library_items` (migración 004). Cualquier output de cualquier tool se auto-persiste tras generarse. Cambridge sigue usando su tabla `exams` legacy; la biblioteca une ambas en runtime sin duplicar storage.
+
+### Endpoints
+
+```
+POST   /api/library/items                      # crear (lo hace el dispatcher automáticamente)
+GET    /api/library/items                      # listar con filtros (search, module, kind, from, to)
+GET    /api/library/items/:id
+DELETE /api/library/items/:id
+```
+
+### Auto-persistencia
+
+`moduleToolsController.run` invoca `autoSaveToLibrary(...)` tras el handler. Best-effort: si falla (tabla no migrada, etc.) lo registra pero no rompe la respuesta. El response trae `autoSaved: true`.
+
+Modo demo NO ensucia BD: el cortocircuito de fixtures responde antes de llegar a la persistencia.
+
+### Páginas
+
+- `/dashboard/resources` (`Resources.jsx`) — biblioteca unificada con búsqueda, filtros (módulo + tipo inferidos), descargar PDF, eliminar.
+- `/dashboard/resources/:id` (`ResourceDetail.jsx`) — detalle, render con `ResultRenderer`, PDF, eliminar.
+
+---
+
+## Sistema de PDF
+
+`pdfService.buildPdf({ type, data, title, subtitle, moduleKey })` con renderers por `output_kind`:
+
+| `type` | Renderer | Uso |
+|---|---|---|
+| `exam` | `renderExam` | Cambridge legacy |
+| `exercise_set` / `exercises` | `renderExerciseSet` | Tools Fase 1 — examen + solucionario |
+| `quiz` | `renderQuiz` | Cuestionarios tipo test |
+| `rubric` | `renderRubric` | Rúbricas de evaluación |
+| `timeline` | `renderTimeline` | Líneas de tiempo |
+| `commentary` | `renderCommentary` | Comentarios de texto |
+| `text` | `renderText` | Markdown ligero (#, ##, -, **bold**) |
+| `problems` / `series` | `renderProblems` | Legacy mates |
+| `dynamics` | `renderDynamics` | Cambridge dinámicas |
+| `sheet` | `renderSheet` | Legacy fichas |
+| `feedback` / `ocr` / `essay` / `syntax` | `renderFeedback` | Informes de corrección |
+| `invoice` | `renderInvoice` | Facturas (PAGADA/PENDIENTE, IVA, totales) |
+| default | `renderJSON` | Volcado pretty |
+
+Todos comparten paleta y tipografía + footer con paginación.
+
+### Flujo de descarga
+
+Frontend → `pdfApi.download({ type, data, title, subtitle, moduleKey, filename })` → `POST /api/pdf/render` → binario `application/pdf` → forzar descarga.
+
+`DownloadPdfButton` encapsula el flujo. ToolRunner pasa `output_kind` directo como `type`.
+
+---
+
+## Modo demo (sin clave de IA)
+
+`aiAvailable()` (`utils/aiAvailable.js`) detecta clave válida: existe, no `PLACEHOLDER`, empieza por `sk-ant-`, longitud >= 30.
+
+Si falsea, el sistema entra en **modo demo controlado**:
+
+1. **Cambridge**: examGenerator devuelve preguntas reales de `exam_questions` (5 seedeadas en `dev_demo_data.sql`) + fixture para el resto. OCR cae a `fixtures.ocrCorrection`.
+2. **Tools Fase 1**: `demoFixtures.forKind(output_kind, { input, tool })` genera fixture específico por kind con datos del input. El dispatcher devuelve `{ ...demo, demo: true }`.
+3. **OCR genérico**: `ocrSubjectCorrectorService.demoFixture` devuelve corrección de muestra.
+4. **Facturas**: `/stripe/invoices` devuelve 6 meses de fixture si no hay `stripe_customer_id` real. Adicionalmente el frontend tiene 4 facturas de ejemplo precargadas como último fallback.
+
+`ToolRunner` muestra banner amarillo discreto cuando llega `demo: true`.
+
+---
+
+## Manejo de errores IA
+
+`callClaude` mapea errores SDK y `aiAvailable()` con códigos estables:
+
+| Código | Status | Caso |
+|---|---|---|
+| `AI_NOT_CONFIGURED` | 503 | ANTHROPIC_API_KEY vacía o placeholder |
+| `AI_INVALID_KEY` | 503 | 401/403 de Anthropic |
+| `AI_RATE_LIMITED` | 429 | 429 de Anthropic |
+| `AI_UNAVAILABLE` | 502 | 5xx / 529 de Anthropic |
+| `BAD_AI_RESPONSE` | 502 | JSON no parseable |
+
+`moduleToolsController` y `ToolRunner` muestran mensaje en español. Nunca se filtra el body crudo de Anthropic al usuario.
 
 ---
 
@@ -180,75 +421,76 @@ Las rutas `/lengua`, `/matematicas`, `/medio` siguen montadas en `App.jsx` y sig
 
 ### Auth
 ```
-POST /api/auth/register    # crea org + admin en transacción
+POST /api/auth/register     # crea org + admin en transacción
 POST /api/auth/login
 POST /api/auth/refresh
 POST /api/auth/logout
 GET  /api/auth/me
 ```
 
-### Módulos (catálogo + activación)
+### Módulos
 ```
 GET    /api/modules                                          # catálogo global
-GET    /api/organizations/:orgId/modules                     # módulos activos de la org
-POST   /api/organizations/:orgId/modules/:moduleId/activate  # admin_centro|superadmin
-DELETE /api/organizations/:orgId/modules/:moduleId           # admin_centro|superadmin
+GET    /api/organizations/:orgId/modules                     # módulos activos
+POST   /api/organizations/:orgId/modules/:moduleId/activate
+DELETE /api/organizations/:orgId/modules/:moduleId
 GET    /api/organizations/:orgId/onboarding-state
-POST   /api/organizations/:orgId/onboarding-state/complete   # admin_centro|superadmin
+POST   /api/organizations/:orgId/onboarding-state/complete
 ```
 
-### Herramientas de módulo (catálogo declarativo + dispatcher genérico)
+### Tools del catálogo
 ```
-GET  /api/modules/:moduleId/tools                            # herramientas vinculadas
-POST /api/modules/:moduleId/tools/:toolKey/run               # ejecutar (requireModuleActive)
+GET  /api/modules/:moduleId/tools                            # tools vinculadas
+POST /api/modules/:moduleId/tools/:toolKey/run               # ejecutar (auto-persiste)
+```
+
+### OCR genérico por asignatura
+```
+GET  /api/modules/:moduleId/ocr/config                       # config pública
+POST /api/modules/:moduleId/ocr/correct                      # multipart examImage
+```
+
+### Biblioteca
+```
+POST   /api/library/items
+GET    /api/library/items?search&module&kind&from&to
+GET    /api/library/items/:id
+DELETE /api/library/items/:id
 ```
 
 ### Cambridge
 ```
-POST /api/cambridge/exams/generate     # hybrid DB+AI exam generation
-POST /api/cambridge/exams/save
-GET  /api/cambridge/exams
-POST /api/cambridge/ocr/correct        # multipart/form-data: examImage
-POST /api/cambridge/dynamics/generate
-POST /api/cambridge/presentations/generate
+POST   /api/cambridge/exams/generate
+POST   /api/cambridge/exams/save
+GET    /api/cambridge/exams
+GET    /api/cambridge/exams/:id                              # detalle
+DELETE /api/cambridge/exams/:id
+POST   /api/cambridge/ocr/correct
+POST   /api/cambridge/dynamics/generate
+POST   /api/cambridge/presentations/generate
 ```
 
-### Lengua
-```
-POST /api/lengua/exercises/generate
-POST /api/lengua/essays/correct
-POST /api/lengua/syntax/analyze
-POST /api/lengua/commentary/generate
-POST /api/lengua/dynamics/generate
-```
-
-### Matemáticas
-```
-POST /api/matematicas/problems/generate
-POST /api/matematicas/photo/correct    # multipart/form-data: mathImage
-POST /api/matematicas/series/generate
-```
-
-### C. del Medio
-```
-POST /api/medio/sheets/generate
-POST /api/medio/quizzes/generate
-POST /api/medio/stem/generate
-```
-
-### Stripe
+### Stripe / Facturación
 ```
 GET  /api/stripe/plans
 POST /api/stripe/checkout
 POST /api/stripe/portal
-POST /api/stripe/webhook               # raw body — registrar ANTES de express.json()
+GET  /api/stripe/invoices                                    # Stripe real con fallback fixture
+GET  /api/stripe/invoices/:id
+POST /api/stripe/webhook                                     # raw body — ANTES de express.json()
+```
+
+### PDF
+```
+POST /api/pdf/render                                         # binario; type + data
+GET  /api/pdf/status                                         # AI/demo status
 ```
 
 ---
 
 ## Variables de entorno
 
-El archivo `.env.example` está en la raíz. En producción crear `backend/.env`:
+`.env.example` en raíz. En producción crear `backend/.env`:
 
 ```env
 # Base de datos
@@ -261,23 +503,30 @@ JWT_REFRESH_SECRET=cambia_esto_tambien
 JWT_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
 
-# Anthropic
+# Anthropic — REQUIRED para que NO entre en modo demo
 ANTHROPIC_API_KEY=sk-ant-...
+CLAUDE_HAIKU_MODEL=claude-haiku-4-5-20251001
+CLAUDE_SONNET_MODEL=claude-sonnet-4-6
 
 # Google Vision (OCR)
 GOOGLE_APPLICATION_CREDENTIALS=/ruta/al/service-account.json
+GOOGLE_CLOUD_PROJECT_ID=verigood-...
 
 # Stripe
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PRICE_STARTER=price_...
-STRIPE_PRICE_CENTRO=price_...
+STRIPE_PRICE_COLEGIO=price_...
+STRIPE_PRICE_ENTERPRISE=price_...
 
 # App
 PORT=3001
-CORS_ORIGIN=https://verigood.es
+CORS_ORIGINS=https://verigood.es,http://localhost:5173
+FRONTEND_URL=https://verigood.es
 NODE_ENV=production
 ```
+
+Con `ANTHROPIC_API_KEY=sk-ant-PLACEHOLDER` (o ausente) el sistema entra en modo demo automáticamente. No es bug — es funcionalidad para entornos pre-producción.
 
 ---
 
@@ -299,11 +548,14 @@ npm run dev:frontend
 # Migraciones (orden estricto)
 psql $DATABASE_URL -f backend/src/migrations/001_initial_schema.sql
 psql $DATABASE_URL -f backend/src/migrations/002_modules_catalog.sql
+psql $DATABASE_URL -f backend/src/migrations/003_module_tools.sql
+psql $DATABASE_URL -f backend/src/migrations/004_library_items.sql
 
-# Seed de SISTEMA (también en producción) — catálogo de módulos
-psql $DATABASE_URL -f backend/src/seeds/001_modules_catalog.sql
+# Seeds de SISTEMA (idempotentes, ON CONFLICT)
+psql $DATABASE_URL -f backend/src/seeds/001_modules_catalog.sql   # 23 módulos
+psql $DATABASE_URL -f backend/src/seeds/002_module_tools.sql      # 56 tools + bindings
 
-# Seed de DEMO (sólo dev) — usuarios y datos de prueba
+# Seed de DEMO (solo dev)
 psql $DATABASE_URL -f backend/src/seeds/dev_demo_data.sql
 # → admin@verigood.com / demo1234
 # → profesor@verigood.com / demo1234
@@ -321,7 +573,7 @@ papel    #EDE6D6   fondo principal
 tinta    #14182B   texto principal
 marino   #1F2A4D   Cambridge / acción primaria
 granate  #6B1F2A   Lengua / errores
-amarillo #E8D89A   avisos
+amarillo #E8D89A   avisos / modo demo
 linea    #B8A988   bordes, texto secundario
 ```
 
@@ -332,43 +584,39 @@ linea    #B8A988   bordes, texto secundario
 - Sin gradientes. Sin emojis en UI.
 - Sombras secas: `box-shadow: 2px 2px 0 rgba(184,169,136,0.4)`
 - Card corner fold via `clip-path` (clase `.card-fold`)
-- Fondo cuadrícula 24px al 8% de opacidad (clase `.bg-grid-paper`)
-- Score stamps rotados con opacidad (clase `.score-stamp`)
+- Fondo cuadrícula 24px al 8% de opacidad (`.bg-grid-paper`)
+- Score stamps rotados con opacidad (`.score-stamp`)
 - Números romanos en márgenes como decoración (§ I, § II...)
-
-**Clases CSS propias más usadas:**
-```
-.bg-grid-paper    fondo cuadrícula papel
-.card-fold        esquina doblada (clip-path)
-.score-stamp      sello de nota rotado
-.vg-input         input estilizado
-.vg-select        select estilizado
-.vg-textarea      textarea estilizado
-.btn-primary      botón principal marino
-.btn-ghost        botón transparente con borde
-.upload-zone      zona de drag & drop
-.section-label    etiqueta de sección en mayúsculas mono
-.vg-table         tabla con estilo cuaderno
-.wstep-num        número de paso en wizard
-```
 
 ---
 
-## Patrones de código a seguir
+## Patrones de código
 
 ### Llamada a IA (backend)
+
 ```js
-// Siempre usar callClaudeJSON() para respuestas estructuradas
-const result = await callClaudeJSON(
-  `claude-haiku-4-5-20251001`,   // haiku para correcciones rápidas
-  systemPrompt,
-  userMessage,
-  { maxTokens: 2048 }
-);
+// callClaude lanza AI_NOT_CONFIGURED/INVALID_KEY/... automáticamente
+const result = await callClaudeJSON({
+  system: 'Eres profesor de ... LOMLOE ...',
+  messages: '... prompt ...',
+  model: 'haiku',
+  maxTokens: 2048,
+});
 // parseJSON() maneja bloques markdown, trailing commas, etc.
 ```
 
+### Handler de tool
+
+```js
+exports.miHandler = async (input, ctx) => {
+  // ctx = { moduleId, stage, userId, orgId, model }
+  const result = await callClaudeJSON({ system, messages, model: 'haiku', maxTokens: 2000 });
+  return { output_kind: 'exercise_set', output: result };
+};
+```
+
 ### Mutation en frontend
+
 ```jsx
 const { mutate, isPending } = useMutation({
   mutationFn: () => cambridgeApi.generateExam(form),
@@ -377,6 +625,7 @@ const { mutate, isPending } = useMutation({
 ```
 
 ### Protección de rutas
+
 ```jsx
 // Por rol
 <ProtectedRoute roles={['admin_centro']}>
@@ -384,49 +633,19 @@ const { mutate, isPending } = useMutation({
 </ProtectedRoute>
 
 // Por módulo activo — consulta organization_modules vía React Query
-// (NO usa user.activeModules del JWT, que se queda stale tras toggles)
 <ProtectedRoute module="cambridge">
   <CambridgeLayout />
 </ProtectedRoute>
 ```
 
-### Sistema de herramientas (`module_tools`) — añadir una tool nueva en 3 pasos
-
-El catálogo de herramientas es declarativo en BD (`module_tools` + `module_tool_bindings`). El backend tiene un único dispatcher (`POST /api/modules/:moduleId/tools/:toolKey/run`) y el frontend un layout y form genéricos (`ModuleLayout` + `DynamicForm`). Para añadir una herramienta nueva basta con:
-
-1. **Seed** — añadir fila en `backend/src/seeds/002_module_tools.sql`:
-   ```sql
-   INSERT INTO module_tools (key, name, description, output_kind, input_schema, sort_order) VALUES
-     ('miclave.minueva', 'Mi herramienta', 'Descripción.', 'text',
-      '{"fields":[{"key":"x","label":"X","type":"text","required":true}]}'::jsonb, 10);
-   INSERT INTO module_tool_bindings (module_id, tool_key, sort_order) VALUES
-     ('algun_modulo_id', 'miclave.minueva', 10);
-   ```
-   `output_kind` ∈ { `text` | `exercise_set` | `rubric` | `timeline` | `quiz` | `commentary` }.
-2. **Handler** — añadir función en `backend/src/services/tools/<modulo>.js`:
-   ```js
-   exports.minueva = async (input, ctx) => {
-     const text = await callClaude({ system: '...', messages: '...', model: 'haiku' });
-     return { output_kind: 'text', output: text };
-   };
-   ```
-   Registrar en `backend/src/services/tools/index.js`:
-   ```js
-   'miclave.minueva': miModulo.minueva,
-   ```
-3. **Renderer (opcional)** — solo si el `output_kind` no existe aún. Crear `frontend/src/components/tools/results/<Kind>Result.jsx` y mapearlo en `ResultRenderer.jsx`. Si reusas un kind existente, NO hay que tocar nada en frontend.
-
-Reiniciar el backend: la comprobación de consistencia (`services/tools/consistencyCheck.js`) avisa si hay discrepancia BD ↔ código.
-
 ### Captura de consumo IA por tool
 
-`runWithUsageCapture` (en `claudeService.js`) usa `AsyncLocalStorage` para sumar `input_tokens` + `output_tokens` de todas las llamadas a `callClaude` que un handler haga durante una petición. El dispatcher persiste el resultado en `usage_logs.tokens_used` y deja el desglose en `metadata` (`input_tokens`, `output_tokens`, `ai_calls`, `models`). Compatible con handlers que hagan varias llamadas a Claude — se suman automáticamente.
+`runWithUsageCapture` (`claudeService.js`) usa `AsyncLocalStorage` para sumar `input_tokens` + `output_tokens` de todas las llamadas a `callClaude` que un handler haga durante una petición. El dispatcher persiste el resultado en `usage_logs.tokens_used`.
 
 ### Flujo de trabajo con agentes
 
-`/agentes` contiene 5 perfiles de agente especializado. Para nuevas funcionalidades:
+`/agentes` contiene 5 perfiles especializados. Para nuevas funcionalidades:
 `arquitecto-software → desarrollador → auditor → tester → documentador`.
-Ver `agentes/README.md` para los detalles y cuándo saltar pasos.
 
 ---
 
@@ -435,16 +654,20 @@ Ver `agentes/README.md` para los detalles y cuándo saltar pasos.
 ```sql
 organizations         -- colegios/academias (multi-tenant)
                       --   + onboarding_completed_at, created_with_demo_data
-                      --   + active_modules[] DEPRECATED (eliminar en migración 003)
+                      --   + stripe_customer_id, plan
 users                 -- superadmin | admin_centro | profesor
-refresh_tokens        -- rotating tokens con expiración
-modules               -- catálogo cerrado (id, name, stage, category, route_prefix...)
-organization_modules  -- pivote: qué módulos tiene activa cada org
-exams                 -- exámenes generados (Cambridge)
-exam_questions        -- banco de preguntas (BD híbrida)
-exam_attempts         -- intentos de corrección OCR
-resources             -- biblioteca de recursos por módulo
-usage_logs            -- registro de consumo IA por org/usuario
+refresh_tokens        -- rotating tokens
+modules               -- catálogo cerrado (id, name, stage, category, icon, route_prefix)
+organization_modules  -- pivote: qué módulos tiene activos cada org
+module_tools          -- catálogo declarativo de tools (key, output_kind, input_schema)
+module_tool_bindings  -- pivote: qué tools tiene cada módulo
+library_items         -- biblioteca unificada: outputs de cualquier tool persistidos
+                      --   (module_id, tool_key, kind, title, payload, metadata)
+exams                 -- Cambridge legacy (questions JSONB)
+exam_questions        -- banco de preguntas Cambridge curadas (BD híbrida)
+exam_attempts         -- intentos de corrección OCR Cambridge
+resources             -- DEPRECATED (hoy biblioteca = library_items + exams)
+usage_logs            -- registro de consumo IA por org/usuario/tool
 ```
 
 ---
@@ -454,13 +677,13 @@ usage_logs            -- registro de consumo IA por org/usuario
 ```bash
 # Primera vez
 cp .env.example backend/.env
-# → editar backend/.env con credenciales reales
+# → editar con credenciales reales
 
 # Desplegar
 chmod +x deploy.sh
 ./deploy.sh
 
-# Comando rápido si ya está todo configurado
+# Comando rápido si ya está configurado
 ./deploy.sh --skip-migrate
 
 # PM2
@@ -479,9 +702,12 @@ SSL con Let's Encrypt: `certbot --nginx -d verigood.es -d www.verigood.es`
 ## Notas importantes
 
 - El webhook de Stripe **debe registrarse antes** de `express.json()` en `backend/src/index.js` para recibir el body sin parsear.
-- Los modelos de Anthropic a usar: `claude-haiku-4-5-20251001` para OCR/correcciones, `claude-sonnet-4-6` para generación de exámenes y contenido largo.
+- Modelos de Anthropic: `claude-haiku-4-5-20251001` para tools/OCR/correcciones, `claude-sonnet-4-6` para generación larga (Cambridge exam generator).
 - El Vite dev server hace proxy de `/api/*` → `localhost:3001` (configurado en `frontend/vite.config.js`).
-- `parseJSON()` en `claudeService.js` maneja respuestas malformadas de la IA (bloques markdown, trailing commas, JSON anidado en texto).
-- Las rutas del frontend usan español: `/lengua/ejercicios`, `/lengua/redaccion`, `/matematicas/problemas`, `/medio/fichas`, etc.
-- **Módulos**: la fuente de verdad para "qué tiene activo una org" es la tabla `organization_modules`. El array `organizations.active_modules` y el ENUM `module_type` están deprecated. No leer ni escribir el campo legacy desde código nuevo.
-- **Onboarding**: una org sin `onboarding_completed_at` ve el `OnboardingHero` en el dashboard institucional con 3 CTAs (activar módulos, invitar profesores, cargar datos demo). La sidebar oculta etapas sin módulos activos. Estado de la sidebar expandida/contraída por etapa: `localStorage`.
+- `parseJSON()` en `claudeService.js` maneja respuestas malformadas (bloques markdown, trailing commas, JSON anidado en texto).
+- Las rutas legacy `/lengua`, `/matematicas`, `/medio` usan IDs antiguos (`espanol`, `matematicas`, `medio`) que NO están en el catálogo Fase 1. Quedarán inalcanzables hasta que se decida su mapeo.
+- **Módulos**: la fuente de verdad es `organization_modules`. El array `organizations.active_modules` está deprecated.
+- **Biblioteca**: `library_items` (tools Fase 1) + `exams` (Cambridge legacy) se unen en runtime en `Resources.jsx`. No se duplica storage de PDF: se regenera on-demand desde el payload.
+- **Onboarding**: una org sin `onboarding_completed_at` ve el `OnboardingHero` en el dashboard institucional. La sidebar oculta etapas sin módulos activos. Estado expandido/contraído de la sidebar: `localStorage`.
+- **Modo demo**: si `aiAvailable()` falsea, el dispatcher de tools cortocircuita con `demoFixtures.forKind(...)`. No es bug, es funcionalidad.
+- **Facturas**: `renderInvoice` produce PDF con número correlativo, fechas, base imponible, IVA 21%, total, sello PAGADA/PENDIENTE y pie legal RGPD. Si la org tiene `stripe_customer_id` real, se usan facturas oficiales Stripe vía `invoice_pdf`. Si no, fixture backend (6 meses) y, como último fallback, 4 ejemplos precargados en el frontend.
