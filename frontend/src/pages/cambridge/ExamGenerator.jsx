@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { cambridgeApi } from '../../services/api';
 import { PageHeader, Button, Select, TagCloud, SectionLabel } from '../../components/ui';
 import DownloadPdfButton from '../../components/ui/DownloadPdfButton';
@@ -19,13 +19,23 @@ const EXERCISE_TYPES = [
 const STEPS = ['Nivel', 'Tema', 'Ejercicios', 'Resultado'];
 
 export default function ExamGenerator() {
+  const qc = useQueryClient();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({ level: 'B1', topic: '', exerciseTypes: ['multiple_choice', 'fill_blanks'], totalQuestions: 15, source: 'hybrid' });
   const [result, setResult] = useState(null);
 
   const { mutate, isPending } = useMutation({
     mutationFn: () => cambridgeApi.generateExam(form),
-    onSuccess: (res) => { setResult(res.data); setStep(3); },
+    onSuccess: (res) => {
+      setResult(res.data);
+      setStep(3);
+      // Refresca dashboards y biblioteca al instante (el backend ya escribió
+      // en usage_logs; sin invalidar, los Dashboards seguirían con la versión
+      // cacheada de antes de generar).
+      qc.invalidateQueries({ queryKey: ['org-stats'] });
+      qc.invalidateQueries({ queryKey: ['cambridge-exams'] });
+      qc.invalidateQueries({ queryKey: ['notifications-unread'] });
+    },
   });
 
   const next = () => setStep((s) => Math.min(s + 1, 2));
@@ -201,7 +211,19 @@ export default function ExamGenerator() {
               filename={`cambridge-${result.level}-${Date.now()}`}
               size="lg"
             />
-            <Button variant="ghost" onClick={() => cambridgeApi.saveExam({ exam: result })}>
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                try {
+                  await cambridgeApi.saveExam({ exam: result });
+                  qc.invalidateQueries({ queryKey: ['cambridge-exams'] });
+                  qc.invalidateQueries({ queryKey: ['org-stats'] });
+                  qc.invalidateQueries({ queryKey: ['notifications-unread'] });
+                } catch (e) {
+                  console.error('saveExam falló', e);
+                }
+              }}
+            >
               Guardar examen
             </Button>
             <Button variant="ghost" onClick={() => { setStep(0); setResult(null); }}>

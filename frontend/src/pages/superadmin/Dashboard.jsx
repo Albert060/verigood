@@ -34,15 +34,23 @@ const WEEKLY_PLACEHOLDER = [
 ];
 
 export default function SuperadminDashboard() {
+  // Refresca cada 60s + al volver al foco. El QueryClient global tiene
+  // staleTime de 2 min y refetchOnWindowFocus desactivado.
   const { data: stats } = useQuery({
     queryKey: ['superadmin-stats'],
     queryFn: () => superadminApi.getStats().then((r) => r.data),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   // Top 5 organizaciones más recientes
   const { data: orgsData, isLoading: loadingOrgs } = useQuery({
     queryKey: ['superadmin-recent-orgs'],
     queryFn: () => superadminApi.getOrgs({ limit: 5 }).then((r) => r.data),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
   const recentOrgs = orgsData?.organizations || [];
 

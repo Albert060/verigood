@@ -26,6 +26,8 @@ export default function SuperadminOrganizations() {
       status: statusFilter || undefined,
       limit: 100,
     }).then((r) => r.data),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   const update = useMutation({

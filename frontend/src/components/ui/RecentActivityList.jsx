@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
-import { orgApi } from '../../services/api';
+import { authApi, orgApi } from '../../services/api';
 
 // Mapeo de action_type → color de acento y label legible. Cubre Cambridge y
 // las tools del catálogo Fase 1. Si llega un action_type desconocido, se pinta
@@ -59,15 +59,32 @@ const metaFor = (actionType) => {
  */
 export default function RecentActivityList({ moduleFilter, limit = 6 }) {
   const { user } = useAuthStore();
-  const orgId = user?.orgId || user?.organization_id;
+  const qc = useQueryClient();
 
-  const { data: stats, isLoading } = useQuery({
+  // /auth/me como fuente fresca del orgId. Si el authStore tiene un orgId
+  // obsoleto o vacío (por ejemplo, sesión persistida antes de un cambio de
+  // backend), aquí lo refrescamos sin pisar el estado global.
+  const { data: me } = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: () => authApi.me().then((r) => r.data),
+    staleTime: 60_000,
+  });
+
+  const orgId = me?.orgId || user?.orgId || user?.organization_id;
+
+  const { data: stats, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['org-stats', orgId],
     queryFn: () => orgApi.getStats(orgId).then((r) => r.data),
     enabled: !!orgId,
+    staleTime: 30_000,
     refetchInterval: 60_000, // refresca cada minuto
     refetchOnWindowFocus: true,
   });
+
+  const handleRefresh = () => {
+    qc.invalidateQueries({ queryKey: ['org-stats', orgId] });
+    refetch();
+  };
 
   const items = useMemo(() => {
     const all = stats?.recentActivity || [];
@@ -77,6 +94,21 @@ export default function RecentActivityList({ moduleFilter, limit = 6 }) {
 
   return (
     <div className="bg-card-bg border border-linea shadow-card">
+      {/* Botón discreto de recarga manual — útil cuando el caché parece
+          desactualizado o el usuario espera ver una acción que acaba de hacer
+          en otra pestaña. */}
+      <div className="px-4 py-2 border-b border-[rgba(184,169,136,0.25)] flex items-center justify-end">
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={isFetching}
+          className="font-mono text-[10px] text-marron-soft hover:text-marino transition-colors disabled:opacity-40"
+          title="Recargar actividad"
+        >
+          {isFetching ? '↻ Cargando…' : '↻ Recargar'}
+        </button>
+      </div>
+
       {isLoading && (
         <div className="px-4 py-6 flex items-center justify-center">
           <div className="w-5 h-5 border-2 border-marino border-t-transparent rounded-full animate-spin" />

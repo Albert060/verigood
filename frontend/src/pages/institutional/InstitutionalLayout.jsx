@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
-import { modulesApi } from '../../services/api';
+import { authApi, modulesApi } from '../../services/api';
 import Topbar from '../../components/layout/Topbar';
 import Sidebar, { SidebarItem, SidebarSection } from '../../components/layout/Sidebar';
 import SidebarStage from '../../components/layout/SidebarStage';
@@ -21,8 +21,35 @@ const ADMIN_ITEMS = [
 ];
 
 export default function InstitutionalLayout() {
-  const { user } = useAuthStore();
-  const orgId = user?.orgId || user?.organization_id;
+  const { user, updateUser } = useAuthStore();
+
+  // Refrescar el perfil desde el backend al entrar al layout. Es crítico
+  // porque el authStore se persiste en localStorage y puede quedar con campos
+  // obsoletos (p.ej. orgId ausente si el usuario se logueó antes de un cambio
+  // de backend). Sin un orgId válido, getStats no se ejecuta y el dashboard
+  // muestra "sin actividad" aunque la BD tenga registros.
+  const { data: meData } = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: () => authApi.me().then((r) => r.data),
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (meData && (meData.orgId !== user?.orgId || meData.orgName !== user?.orgName)) {
+      updateUser({
+        orgId: meData.orgId,
+        orgName: meData.orgName,
+        plan: meData.plan,
+        activeModules: meData.activeModules,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meData?.orgId, meData?.orgName]);
+
+  // Usamos preferentemente el orgId fresco de /auth/me. Si aún no ha llegado,
+  // caemos al del authStore. Esto evita una ventana inicial en la que
+  // getStats no se ejecuta porque user.orgId es undefined.
+  const orgId = meData?.orgId || user?.orgId || user?.organization_id;
 
   const { data } = useQuery({
     queryKey: ['modules', 'org', orgId],

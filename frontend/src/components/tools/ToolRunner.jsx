@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { moduleToolsApi, libraryApi } from '../../services/api';
 import { PageHeader, Button } from '../ui';
 import DynamicForm from './DynamicForm';
@@ -53,12 +53,22 @@ const buildDefaultTitle = (tool, input) => {
 };
 
 export default function ToolRunner({ moduleId, tool }) {
+  const qc = useQueryClient();
   const [input, setInput] = useState(() => buildInitialInput(tool.input_schema));
   const [savedId, setSavedId] = useState(null);
 
   const run = useMutation({
     mutationFn: () => moduleToolsApi.run(moduleId, tool.key, input).then((r) => r.data),
     onMutate: () => setSavedId(null),
+    onSuccess: () => {
+      // El dispatcher backend ya auto-persiste en library_items y escribe en
+      // usage_logs. Invalidamos las queries que muestran ambos para que la
+      // próxima vez que el usuario las abra (Dashboard, Biblioteca, Home del
+      // módulo) vea su acción reflejada sin esperar al refetchInterval.
+      qc.invalidateQueries({ queryKey: ['org-stats'] });
+      qc.invalidateQueries({ queryKey: ['library-items'] });
+      qc.invalidateQueries({ queryKey: ['notifications-unread'] });
+    },
   });
 
   const save = useMutation({

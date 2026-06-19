@@ -1,16 +1,26 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
-import { orgApi, modulesApi } from '../../services/api';
+import { authApi, orgApi, modulesApi } from '../../services/api';
 import { StatCard, PageHeader, SectionLabel, ProgressBar } from '../../components/ui';
 import EmptyState from '../../components/ui/EmptyState';
+import RecentActivityList from '../../components/ui/RecentActivityList';
 import OnboardingHero from '../../components/onboarding/OnboardingHero';
 
 export default function InstitutionalDashboard() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const orgId = user?.orgId || user?.organization_id;
+
+  // Resuelve orgId con prioridad al backend (/auth/me) por si el authStore
+  // persistido en localStorage está desactualizado o no lo guardó al loguear.
+  const { data: me } = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: () => authApi.me().then((r) => r.data),
+    staleTime: 60_000,
+  });
+  const orgId = me?.orgId || user?.orgId || user?.organization_id;
 
   const { data: orgModulesData } = useQuery({
     queryKey: ['modules', 'org', orgId],
@@ -25,11 +35,28 @@ export default function InstitutionalDashboard() {
     enabled: !!orgId,
   });
 
+  // Refresca cada 60s + al volver al foco. El QueryClient global tiene
+  // staleTime de 2 min y refetchOnWindowFocus desactivado, lo que era el
+  // motivo por el que el admin no veía las acciones nuevas del profesor sin
+  // recargar manualmente. Aquí lo sobreescribimos para esta query concreta.
   const { data: stats } = useQuery({
     queryKey: ['org-stats', orgId],
     queryFn: () => orgApi.getStats(orgId).then((r) => r.data),
     enabled: !!orgId,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
+
+  // Al entrar al dashboard invalidamos la cache una vez para garantizar que
+  // las acciones que el usuario haya hecho en otra pestaña/ventana se reflejen
+  // sin esperar al siguiente refetchInterval ni depender del focus.
+  useEffect(() => {
+    if (orgId) {
+      qc.invalidateQueries({ queryKey: ['org-stats', orgId] });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId]);
 
   const dismissOnboarding = useMutation({
     mutationFn: () => orgApi.completeOnboarding(orgId),
@@ -123,30 +150,7 @@ export default function InstitutionalDashboard() {
 
         <div className="lg:col-span-2 bg-card-bg border border-linea shadow-card rounded-2xl p-6">
           <SectionLabel className="mb-5">ACTIVIDAD RECIENTE</SectionLabel>
-          {recentActivity.length === 0 ? (
-            <EmptyState
-              glyph="§"
-              title="Sin actividad reciente"
-              description="Las acciones de tus profesores aparecerán aquí en tiempo real."
-            />
-          ) : (
-            <div className="space-y-0">
-              {recentActivity.map((act, i) => (
-                <div key={i} className="flex items-start gap-4 py-4 border-b border-[rgba(184,169,136,0.3)] last:border-0">
-                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-2 bg-marino opacity-60" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[15px] text-tinta leading-snug mb-1">
-                      {act.action_type} · {act.module}
-                    </p>
-                    <p className="font-mono text-[12px] text-marron-soft">{act.user_name}</p>
-                  </div>
-                  <span className="font-mono text-[12px] text-marron-soft flex-shrink-0">
-                    {new Date(act.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+          <RecentActivityList limit={10} />
         </div>
       </div>
     </div>

@@ -10,7 +10,11 @@ const router = express.Router();
 // Org-level routes
 router.get('/organizations/:orgId', authenticate, getOrg);
 router.patch('/organizations/:orgId', authenticate, authorize('admin_centro', 'superadmin'), updateOrg);
-router.get('/organizations/:orgId/stats', authenticate, authorize('admin_centro', 'superadmin'), getStats);
+// Stats accesibles también para profesores: la pantalla del dashboard (incluido
+// "Actividad reciente") las consume. El controller ya valida que orgId del
+// URL coincide con el organization_id del JWT, así que no hay fuga entre
+// centros — un profesor solo puede ver sus propios stats.
+router.get('/organizations/:orgId/stats', authenticate, authorize('admin_centro', 'profesor', 'superadmin'), getStats);
 router.patch('/organizations/:orgId/modules', authenticate, authorize('admin_centro', 'superadmin'), updateModules);
 
 // Superadmin routes
