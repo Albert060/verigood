@@ -132,6 +132,16 @@ export const moduleToolsApi = {
     api.post(`/modules/${moduleId}/tools/${toolKey}/run`, { input }, { timeout: 90000 }),
 };
 
+// ── Module OCR (corrector OCR por asignatura) ────────────────
+export const moduleOcrApi = {
+  getConfig: (moduleId) => api.get(`/modules/${moduleId}/ocr/config`),
+  correct: (moduleId, formData) =>
+    api.post(`/modules/${moduleId}/ocr/correct`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 90000,
+    }),
+};
+
 // ── Users ────────────────────────────────────────────────────
 export const usersApi = {
   getAll: (orgId, params) => api.get(`/organizations/${orgId}/users`, { params }),

@@ -13,6 +13,7 @@ const usersRoutes = require('./routes/users');
 const organizationsRoutes = require('./routes/organizations');
 const modulesRoutes = require('./routes/modules');
 const moduleToolsRoutes = require('./routes/moduleTools');
+const moduleOcrRoutes = require('./routes/moduleOcr');
 const cambridgeRoutes = require('./routes/cambridge');
 const lenguaRoutes = require('./routes/lengua');
 const matematicasRoutes = require('./routes/matematicas');
@@ -67,6 +68,7 @@ app.use('/api/matematicas', aiLimiter);
 app.use('/api/medio', aiLimiter);
 // Las ejecuciones de herramientas también consumen IA: mismo límite.
 app.use(/^\/api\/modules\/[^/]+\/tools\/[^/]+\/run$/, aiLimiter);
+app.use(/^\/api\/modules\/[^/]+\/ocr\/correct$/, aiLimiter);
 
 // ── Health check ─────────────────────────────────────────────
 app.get('/health', (req, res) => {
@@ -79,6 +81,7 @@ app.use('/api', usersRoutes);
 app.use('/api', organizationsRoutes);
 app.use('/api', modulesRoutes);
 app.use('/api', moduleToolsRoutes);
+app.use('/api', moduleOcrRoutes);
 app.use('/api/cambridge', cambridgeRoutes);
 app.use('/api/lengua', lenguaRoutes);
 app.use('/api/matematicas', matematicasRoutes);

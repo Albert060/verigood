@@ -1,6 +1,6 @@
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { modulesApi, moduleToolsApi } from '../../services/api';
+import { modulesApi, moduleToolsApi, moduleOcrApi } from '../../services/api';
 import Topbar from '../../components/layout/Topbar';
 import Sidebar, { SidebarItem, SidebarSection } from '../../components/layout/Sidebar';
 import DemoBanner from '../../components/ui/DemoBanner';
@@ -27,8 +27,15 @@ export default function ModuleLayout({ moduleId }) {
     staleTime: 5 * 60_000,
   });
 
+  const { data: ocrConfig } = useQuery({
+    queryKey: ['module-ocr-config', moduleId],
+    queryFn: () => moduleOcrApi.getConfig(moduleId).then((r) => r.data),
+    staleTime: 5 * 60_000,
+  });
+
   const mod = catalogData?.modules?.find((m) => m.id === moduleId);
   const tools = toolsData?.tools || [];
+  const ocrEnabled = !!ocrConfig?.enabled;
   const stageLabel = STAGE_LABEL[mod?.stage] || '';
   const moduleLabel = mod ? `${stageLabel} · ${mod.name}`.toUpperCase() : 'MÓDULO';
   // Las rutas de tools cuelgan del route_prefix del módulo, definido en el
@@ -61,6 +68,13 @@ export default function ModuleLayout({ moduleId }) {
               label={t.name}
             />
           ))}
+          {ocrEnabled && (
+            <SidebarItem
+              to={`${base}/ocr`}
+              icon="✓"
+              label="Corrector OCR"
+            />
+          )}
           <SidebarSection label="NAVEGACIÓN" />
           <SidebarItem to="/dashboard" label="Panel del centro" icon="←" />
         </Sidebar>
@@ -68,7 +82,7 @@ export default function ModuleLayout({ moduleId }) {
           <div className="h-0.5 bg-marino opacity-30" />
           <div className="p-7 max-w-4xl">
             <DemoBanner />
-            <Outlet context={{ moduleId, mod, tools }} />
+            <Outlet context={{ moduleId, mod, tools, ocrEnabled }} />
           </div>
         </main>
       </div>
