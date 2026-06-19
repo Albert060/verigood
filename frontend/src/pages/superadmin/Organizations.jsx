@@ -3,92 +3,183 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { superadminApi } from '../../services/api';
 import { PageHeader, Badge, Button, Modal, Select, Toggle, SectionLabel } from '../../components/ui';
 
-const MOCK_ORGS = [
-  { id: '1', name: 'Colegio San Isidro', city: 'Madrid', plan: 'colegio', active_modules: ['cambridge','espanol','matematicas','medio'], active_users: 12, monthly_usage: 2840, is_active: true, created_at: '2024-09-01' },
-  { id: '2', name: 'IES Cervantes', city: 'Barcelona', plan: 'starter', active_modules: ['cambridge'], active_users: 1, monthly_usage: 320, is_active: true, created_at: '2024-10-15' },
-  { id: '3', name: 'Colegio Santa María', city: 'Valencia', plan: 'enterprise', active_modules: ['cambridge','espanol','matematicas','medio','oposiciones'], active_users: 38, monthly_usage: 9100, is_active: true, created_at: '2024-08-20' },
-  { id: '4', name: 'CEIP Los Olivos', city: 'Sevilla', plan: 'colegio', active_modules: ['cambridge','matematicas'], active_users: 7, monthly_usage: 1240, is_active: true, created_at: '2025-01-10' },
-  { id: '5', name: 'IES Lope de Vega', city: 'Málaga', plan: 'starter', active_modules: ['cambridge'], active_users: 1, monthly_usage: 80, is_active: false, created_at: '2025-03-05' },
-  { id: '6', name: 'Colegio Bilingüe Norte', city: 'Bilbao', plan: 'colegio', active_modules: ['cambridge','espanol'], active_users: 9, monthly_usage: 1890, is_active: true, created_at: '2024-11-22' },
-];
+const MODULE_LABELS = {
+  cambridge: 'Cambridge', espanol: 'Lengua', matematicas: 'Mates', medio: 'C.Medio', oposiciones: 'Oposic.',
+};
 
-const MODULE_LABELS = { cambridge: 'Cambridge', espanol: 'Lengua', matematicas: 'Mates', medio: 'C.Medio', oposiciones: 'Oposic.' };
+const formatDate = (iso) => {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString('es'); } catch { return '—'; }
+};
 
 export default function SuperadminOrganizations() {
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [editOrg, setEditOrg] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  const orgs = MOCK_ORGS.filter((o) =>
-    !search || o.name.toLowerCase().includes(search.toLowerCase()) || o.city.toLowerCase().includes(search.toLowerCase())
-  );
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['superadmin-orgs', search, statusFilter],
+    queryFn: () => superadminApi.getOrgs({
+      search: search || undefined,
+      status: statusFilter || undefined,
+      limit: 100,
+    }).then((r) => r.data),
+  });
 
-  const openEdit = (org) => { setEditOrg(org); setEditForm({ plan: org.plan, is_active: org.is_active }); };
+  const update = useMutation({
+    mutationFn: ({ orgId, payload }) => superadminApi.updateOrg(orgId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['superadmin-orgs'] });
+      setEditOrg(null);
+    },
+  });
+
+  const orgs = data?.organizations || [];
+  const total = data?.total ?? orgs.length;
+
+  const openEdit = (org) => {
+    setEditOrg(org);
+    setEditForm({ plan: org.plan || 'starter', is_active: !!org.is_active });
+  };
+
+  const saveEdit = () => {
+    if (!editOrg) return;
+    update.mutate({
+      orgId: editOrg.id,
+      payload: {
+        plan: editForm.plan,
+        is_active: editForm.is_active,
+      },
+    });
+  };
 
   return (
     <div className="animate-slide-in">
       <PageHeader
         title="Organizaciones"
-        subtitle={`${MOCK_ORGS.length} CENTROS REGISTRADOS`}
+        subtitle={`${total} CENTROS REGISTRADOS`}
         romanNum="§ II"
       />
 
-      {/* Search */}
-      <div className="flex items-center gap-3 mb-5">
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 mb-5 flex-wrap">
         <input
           className="vg-input max-w-xs"
           placeholder="Buscar centro o ciudad..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <span className="font-mono text-[11px] text-marron-soft">{orgs.length} resultados</span>
+        <select
+          className="vg-select w-32"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="">Todos</option>
+          <option value="active">Activos</option>
+          <option value="suspended">Suspendidos</option>
+        </select>
+        <span className="font-mono text-[11px] text-marron-soft">
+          {orgs.length} {orgs.length === 1 ? 'resultado' : 'resultados'}
+        </span>
+        <button
+          onClick={() => refetch()}
+          className="ml-auto font-mono text-[10px] text-marron-soft border border-linea px-2 py-1 hover:border-tinta hover:text-tinta transition-colors"
+        >
+          ↻ Recargar
+        </button>
       </div>
 
-      {/* Table */}
-      <div className="bg-card-bg border border-linea shadow-card">
-        <div className="overflow-x-auto">
-          <table className="vg-table">
-            <thead>
-              <tr>
-                <th>CENTRO</th><th>CIUDAD</th><th>PLAN</th><th>MÓDULOS</th>
-                <th>PROFESORES</th><th>USO/MES</th><th>ALTA</th><th>ESTADO</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {orgs.map((org) => (
-                <tr key={org.id}>
-                  <td className="font-medium text-tinta">{org.name}</td>
-                  <td className="font-mono text-[11px] text-marron-soft">{org.city}</td>
-                  <td><Badge variant={`plan-${org.plan}`}>{org.plan.toUpperCase()}</Badge></td>
-                  <td>
-                    <div className="flex flex-wrap gap-1">
-                      {org.active_modules.map((m) => (
-                        <span key={m} className="font-mono text-[9px] px-1.5 py-0.5 border border-linea text-marron-soft">
-                          {MODULE_LABELS[m] || m}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="font-mono text-[12px]">{org.active_users}</td>
-                  <td className="font-mono text-[11px]">{org.monthly_usage.toLocaleString()}</td>
-                  <td className="font-mono text-[10px] text-marron-soft">
-                    {new Date(org.created_at).toLocaleDateString('es')}
-                  </td>
-                  <td><Badge variant={org.is_active ? 'active' : 'paused'}>{org.is_active ? 'ACTIVO' : 'SUSP.'}</Badge></td>
-                  <td>
-                    <button
-                      onClick={() => openEdit(org)}
-                      className="font-mono text-[10px] text-marino hover:text-granate transition-colors"
-                    >
-                      Editar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* States */}
+      {isLoading && (
+        <div className="h-48 flex items-center justify-center">
+          <div className="w-6 h-6 border-2 border-marino border-t-transparent rounded-full animate-spin" />
         </div>
-      </div>
+      )}
+
+      {isError && (
+        <div className="px-4 py-3 border border-granate/40 bg-granate/5 text-granate font-mono text-[12px]">
+          Error al cargar las organizaciones. Pulsa "↻ Recargar" para reintentar.
+        </div>
+      )}
+
+      {!isLoading && !isError && orgs.length === 0 && (
+        <div className="h-48 flex flex-col items-center justify-center gap-2">
+          <div className="font-display italic text-[36px] text-[rgba(184,169,136,0.3)]">§</div>
+          <p className="font-mono text-[11px] text-marron-soft">
+            {search || statusFilter
+              ? 'No hay centros que coincidan con los filtros'
+              : 'Aún no hay centros registrados'}
+          </p>
+        </div>
+      )}
+
+      {/* Table */}
+      {!isLoading && !isError && orgs.length > 0 && (
+        <div className="bg-card-bg border border-linea shadow-card">
+          <div className="overflow-x-auto">
+            <table className="vg-table">
+              <thead>
+                <tr>
+                  <th>CENTRO</th><th>CIUDAD</th><th>PLAN</th><th>MÓDULOS</th>
+                  <th>PROFES.</th><th>USO/MES</th><th>ALTA</th><th>ESTADO</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {orgs.map((org) => {
+                  const modules = Array.isArray(org.active_modules) ? org.active_modules : [];
+                  return (
+                    <tr key={org.id}>
+                      <td className="font-medium text-tinta">{org.name || '—'}</td>
+                      <td className="font-mono text-[11px] text-marron-soft">{org.city || '—'}</td>
+                      <td>
+                        <Badge variant={`plan-${org.plan || 'starter'}`}>
+                          {(org.plan || 'starter').toUpperCase()}
+                        </Badge>
+                      </td>
+                      <td>
+                        {modules.length === 0 ? (
+                          <span className="font-mono text-[10px] text-marron-soft">—</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {modules.slice(0, 4).map((m) => (
+                              <span key={m} className="font-mono text-[9px] px-1.5 py-0.5 border border-linea text-marron-soft">
+                                {MODULE_LABELS[m] || m}
+                              </span>
+                            ))}
+                            {modules.length > 4 && (
+                              <span className="font-mono text-[9px] text-marron-soft">+{modules.length - 4}</span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="font-mono text-[12px]">{org.active_users ?? 0}</td>
+                      <td className="font-mono text-[11px]">
+                        {Number(org.monthly_usage ?? 0).toLocaleString('es-ES')}
+                      </td>
+                      <td className="font-mono text-[10px] text-marron-soft">{formatDate(org.created_at)}</td>
+                      <td>
+                        <Badge variant={org.is_active ? 'active' : 'paused'}>
+                          {org.is_active ? 'ACTIVO' : 'SUSP.'}
+                        </Badge>
+                      </td>
+                      <td>
+                        <button
+                          onClick={() => openEdit(org)}
+                          className="font-mono text-[10px] text-marino hover:text-granate transition-colors"
+                        >
+                          Editar
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Edit modal */}
       <Modal
@@ -98,7 +189,7 @@ export default function SuperadminOrganizations() {
         footer={
           <>
             <Button variant="ghost" onClick={() => setEditOrg(null)}>Cancelar</Button>
-            <Button onClick={() => setEditOrg(null)}>Guardar cambios</Button>
+            <Button onClick={saveEdit} loading={update.isPending}>Guardar cambios</Button>
           </>
         }
       >
@@ -125,10 +216,15 @@ export default function SuperadminOrganizations() {
             </div>
             <div className="bg-[rgba(232,216,154,0.15)] border border-amarillo p-3">
               <p className="font-mono text-[11px] text-[#7A5A1E]">
-                Ciudad: {editOrg.city} · Alta: {new Date(editOrg.created_at).toLocaleDateString('es')} ·
-                Profesores activos: {editOrg.active_users}
+                Ciudad: {editOrg.city || '—'} · Alta: {formatDate(editOrg.created_at)} ·
+                Profesores activos: {editOrg.active_users ?? 0}
               </p>
             </div>
+            {update.isError && (
+              <div className="px-3 py-2 border border-granate/40 bg-granate/5 text-granate font-mono text-[11px]">
+                Error al guardar. Reintenta.
+              </div>
+            )}
           </div>
         )}
       </Modal>

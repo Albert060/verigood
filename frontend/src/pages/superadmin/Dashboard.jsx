@@ -1,12 +1,15 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { superadminApi } from '../../services/api';
 import { StatCard, PageHeader, Badge, ProgressBar, SectionLabel } from '../../components/ui';
 
 const PLAN_PRICES = { starter: 29, colegio: 149, enterprise: 490 };
+const PLAN_LABEL  = { starter: 'Starter', colegio: 'Colegio', enterprise: 'Enterprise' };
+const PLAN_COLOR  = { starter: 'bg-linea', colegio: 'bg-marino', enterprise: 'bg-granate' };
 
 // Mini bar chart
 function BarChart({ data }) {
-  const max = Math.max(...data.map((d) => d.value));
+  const max = Math.max(...data.map((d) => d.value), 1);
   return (
     <div className="flex items-end gap-1.5 h-16">
       {data.map((d) => (
@@ -23,17 +26,11 @@ function BarChart({ data }) {
   );
 }
 
-const MOCK_WEEKLY = [
-  { label: 'Lun', value: 1840 }, { label: 'Mar', value: 2210 }, { label: 'Mié', value: 1950 },
-  { label: 'Jue', value: 2680 }, { label: 'Vie', value: 3100 }, { label: 'Sáb', value: 890 }, { label: 'Dom', value: 430 },
-];
-
-const MOCK_ORGS = [
-  { id: 1, name: 'Colegio San Isidro', city: 'Madrid', plan: 'colegio', users: 12, usage: 2840, is_active: true },
-  { id: 2, name: 'IES Cervantes', city: 'Barcelona', plan: 'starter', users: 1, usage: 320, is_active: true },
-  { id: 3, name: 'Colegio Santa María', city: 'Valencia', plan: 'enterprise', users: 38, usage: 9100, is_active: true },
-  { id: 4, name: 'CEIP Los Olivos', city: 'Sevilla', plan: 'colegio', users: 7, usage: 1240, is_active: true },
-  { id: 5, name: 'IES Lope de Vega', city: 'Málaga', plan: 'starter', users: 1, usage: 80, is_active: false },
+// Serie semanal placeholder — el endpoint /superadmin/stats no devuelve aún
+// serie temporal. Se reemplazará cuando el controller la añada.
+const WEEKLY_PLACEHOLDER = [
+  { label: 'Lun', value: 0 }, { label: 'Mar', value: 0 }, { label: 'Mié', value: 0 },
+  { label: 'Jue', value: 0 }, { label: 'Vie', value: 0 }, { label: 'Sáb', value: 0 }, { label: 'Dom', value: 0 },
 ];
 
 export default function SuperadminDashboard() {
@@ -42,8 +39,20 @@ export default function SuperadminDashboard() {
     queryFn: () => superadminApi.getStats().then((r) => r.data),
   });
 
-  const mrr = MOCK_ORGS.filter((o) => o.is_active)
-    .reduce((sum, o) => sum + (PLAN_PRICES[o.plan] || 0), 0);
+  // Top 5 organizaciones más recientes
+  const { data: orgsData, isLoading: loadingOrgs } = useQuery({
+    queryKey: ['superadmin-recent-orgs'],
+    queryFn: () => superadminApi.getOrgs({ limit: 5 }).then((r) => r.data),
+  });
+  const recentOrgs = orgsData?.organizations || [];
+
+  // MRR real desde el breakdown de planes que ya devuelve el backend
+  const mrr = useMemo(() => {
+    const breakdown = stats?.planBreakdown || [];
+    return breakdown.reduce((sum, row) => sum + (PLAN_PRICES[row.plan] || 0) * Number(row.count || 0), 0);
+  }, [stats]);
+
+  const planBreakdown = stats?.planBreakdown || [];
 
   return (
     <div className="animate-slide-in">
@@ -55,39 +64,60 @@ export default function SuperadminDashboard() {
 
       {/* KPIs */}
       <div className="grid grid-cols-4 gap-3 mb-6">
-        <StatCard label="ORGANIZACIONES" value={stats?.organizations?.total ?? 24} delta="+2 este mes" deltaUp />
-        <StatCard label="PROFESORES ACTIVOS" value={stats?.users?.total ?? 312} delta="+18 esta semana" deltaUp />
-        <StatCard label="MRR" value={`${mrr.toLocaleString('es')} €`} delta="+340 € vs mes anterior" deltaUp mono={false} />
-        <StatCard label="LLAMADAS API / MES" value={stats?.usage?.monthly_calls ?? '24.8k'} />
+        <StatCard
+          label="ORGANIZACIONES"
+          value={stats?.organizations?.total ?? '—'}
+          delta={stats?.organizations?.active != null ? `${stats.organizations.active} activas` : null}
+          deltaUp
+        />
+        <StatCard
+          label="PROFESORES ACTIVOS"
+          value={stats?.users?.total ?? '—'}
+        />
+        <StatCard
+          label="MRR"
+          value={mrr ? `${mrr.toLocaleString('es-ES')} €` : '—'}
+          mono={false}
+        />
+        <StatCard
+          label="LLAMADAS API / MES"
+          value={stats?.usage?.monthly_calls ?? '—'}
+        />
       </div>
 
       <div className="grid grid-cols-3 gap-5 mb-6">
-        {/* Weekly usage chart */}
+        {/* Weekly usage chart — placeholder hasta que /superadmin/stats devuelva serie */}
         <div className="col-span-2 bg-card-bg border border-linea shadow-card card-fold p-4">
           <SectionLabel className="mb-3">LLAMADAS API — ÚLTIMOS 7 DÍAS</SectionLabel>
-          <BarChart data={MOCK_WEEKLY} />
+          <BarChart data={WEEKLY_PLACEHOLDER} />
+          <p className="font-mono text-[10px] text-marron-soft mt-2">
+            Serie temporal pendiente de exponer en el endpoint /superadmin/stats.
+          </p>
         </div>
 
-        {/* Plan breakdown */}
+        {/* Plan breakdown — datos reales del endpoint */}
         <div className="bg-card-bg border border-linea shadow-card card-fold p-4">
           <SectionLabel className="mb-3">DISTRIBUCIÓN POR PLAN</SectionLabel>
-          <div className="space-y-3">
-            {[
-              { plan: 'Enterprise', count: 4, color: 'bg-granate' },
-              { plan: 'Colegio', count: 16, color: 'bg-marino' },
-              { plan: 'Starter', count: 4, color: 'bg-linea' },
-            ].map(({ plan, count, color }) => (
-              <div key={plan} className="flex items-center gap-2.5">
-                <div className={`w-2 h-2 ${color} flex-shrink-0`} />
-                <span className="font-mono text-[11px] text-tinta flex-1">{plan}</span>
-                <span className="font-mono text-[12px] font-bold text-tinta">{count}</span>
-              </div>
-            ))}
-          </div>
+          {planBreakdown.length === 0 ? (
+            <p className="font-mono text-[11px] text-marron-soft">Sin datos.</p>
+          ) : (
+            <div className="space-y-3">
+              {planBreakdown
+                .slice()
+                .sort((a, b) => Number(b.count) - Number(a.count))
+                .map(({ plan, count }) => (
+                  <div key={plan} className="flex items-center gap-2.5">
+                    <div className={`w-2 h-2 ${PLAN_COLOR[plan] || 'bg-linea'} flex-shrink-0`} />
+                    <span className="font-mono text-[11px] text-tinta flex-1">{PLAN_LABEL[plan] || plan}</span>
+                    <span className="font-mono text-[12px] font-bold text-tinta">{count}</span>
+                  </div>
+                ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Organizations table */}
+      {/* Organizations table — datos reales */}
       <div className="bg-card-bg border border-linea shadow-card mb-6">
         <div className="flex items-center justify-between px-4 py-3 border-b border-linea">
           <SectionLabel className="mb-0 text-[11px]">ORGANIZACIONES RECIENTES</SectionLabel>
@@ -95,37 +125,61 @@ export default function SuperadminDashboard() {
             Ver todas →
           </a>
         </div>
-        <div className="overflow-x-auto">
-          <table className="vg-table">
-            <thead>
-              <tr>
-                <th>CENTRO</th><th>CIUDAD</th><th>PLAN</th><th>PROFESORES</th>
-                <th>USO MES</th><th>ESTADO</th>
-              </tr>
-            </thead>
-            <tbody>
-              {MOCK_ORGS.map((org) => (
-                <tr key={org.id}>
-                  <td className="font-medium text-tinta">{org.name}</td>
-                  <td className="text-marron-soft font-mono text-[11px]">{org.city}</td>
-                  <td><Badge variant={`plan-${org.plan}`}>{org.plan.toUpperCase()}</Badge></td>
-                  <td className="font-mono text-[12px]">{org.users}</td>
-                  <td>
-                    <div className="flex items-center gap-2">
-                      <ProgressBar value={org.usage} max={10000} className="w-16" />
-                      <span className="font-mono text-[10px] text-marron-soft">{org.usage.toLocaleString()}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <Badge variant={org.is_active ? 'active' : 'paused'}>
-                      {org.is_active ? 'ACTIVO' : 'SUSPENDIDO'}
-                    </Badge>
-                  </td>
+
+        {loadingOrgs && (
+          <div className="h-24 flex items-center justify-center">
+            <div className="w-5 h-5 border-2 border-marino border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+
+        {!loadingOrgs && recentOrgs.length === 0 && (
+          <div className="px-4 py-6 text-center font-mono text-[11px] text-marron-soft">
+            Aún no hay centros registrados.
+          </div>
+        )}
+
+        {!loadingOrgs && recentOrgs.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="vg-table">
+              <thead>
+                <tr>
+                  <th>CENTRO</th><th>CIUDAD</th><th>PLAN</th><th>PROFESORES</th>
+                  <th>USO MES</th><th>ESTADO</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {recentOrgs.map((org) => {
+                  const usage = Number(org.monthly_usage ?? 0);
+                  return (
+                    <tr key={org.id}>
+                      <td className="font-medium text-tinta">{org.name || '—'}</td>
+                      <td className="text-marron-soft font-mono text-[11px]">{org.city || '—'}</td>
+                      <td>
+                        <Badge variant={`plan-${org.plan || 'starter'}`}>
+                          {(org.plan || 'starter').toUpperCase()}
+                        </Badge>
+                      </td>
+                      <td className="font-mono text-[12px]">{org.active_users ?? 0}</td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <ProgressBar value={usage} max={10000} className="w-16" />
+                          <span className="font-mono text-[10px] text-marron-soft">
+                            {usage.toLocaleString('es-ES')}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <Badge variant={org.is_active ? 'active' : 'paused'}>
+                          {org.is_active ? 'ACTIVO' : 'SUSPENDIDO'}
+                        </Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
