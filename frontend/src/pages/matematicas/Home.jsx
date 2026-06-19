@@ -1,19 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import { PageHeader, StatCard, SectionLabel } from '../../components/ui';
+import RecentActivityList from '../../components/ui/RecentActivityList';
 
 const AGENTS = [
   { to: '/matematicas/problemas', roman: 'I', title: 'Generador de problemas', desc: 'Problemas de aritmética, geometría, álgebra y estadística con solución paso a paso. Adaptado al curso.' },
   { to: '/matematicas/corrector', roman: 'II', title: 'Corrector por foto', desc: 'Sube foto del trabajo del alumno → análisis de pasos, localización de errores y explicación de la solución.' },
   { to: '/matematicas/series', roman: 'III', title: 'Series y ejercicios', desc: 'Genera series de ejercicios de cálculo mental, fracciones, decimales, geometría o estadística.' },
 ];
-
-const RECENT = [
-  { title: 'Problemas 5ºA · Fracciones y decimales · 10 prob.', time: 'Hace 3h', type: 'problema' },
-  { title: 'Corrección foto · Luis R. · División con decimales', time: 'Ayer', type: 'foto' },
-  { title: 'Serie · Cálculo mental · 3ºB · 20 operaciones', time: 'Martes', type: 'serie' },
-];
-
-const TYPE_COLORS = { problema: '#2D4A6A', foto: '#6B1F2A', serie: '#1A5C35' };
 
 export default function MatematicasHome() {
   const navigate = useNavigate();
@@ -47,15 +40,7 @@ export default function MatematicasHome() {
       </div>
 
       <SectionLabel className="mb-3">ACTIVIDAD RECIENTE</SectionLabel>
-      <div className="bg-card-bg border border-linea shadow-card divide-y divide-[rgba(184,169,136,0.25)]">
-        {RECENT.map((r, i) => (
-          <div key={i} className="flex items-center gap-3 px-4 py-3">
-            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: TYPE_COLORS[r.type] }} />
-            <span className="flex-1 text-[12.5px] text-tinta">{r.title}</span>
-            <span className="font-mono text-[10px] text-marron-soft">{r.time}</span>
-          </div>
-        ))}
-      </div>
+      <RecentActivityList moduleFilter="matematicas" limit={6} />
     </div>
   );
 }

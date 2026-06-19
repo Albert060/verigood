@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { PageHeader, StatCard, SectionLabel } from '../../components/ui';
+import RecentActivityList from '../../components/ui/RecentActivityList';
 
 const AGENTS = [
   { to: '/lengua/ejercicios', roman: 'I', title: 'Generador de ejercicios', desc: 'Dictado, comprensión lectora, redacción, ortografía, sintaxis, morfología. Adaptado al nivel y curso.' },
@@ -8,15 +9,6 @@ const AGENTS = [
   { to: '/lengua/comentario', roman: 'IV', title: 'Comentario de texto', desc: 'Genera guía de comentario crítico para cualquier fragmento literario o periodístico.' },
   { to: '/lengua/dinamicas', roman: 'V', title: 'Dinámicas de clase', desc: 'Actividades de expresión oral, comprensión auditiva, debate, juego de roles.' },
 ];
-
-const RECENT = [
-  { title: 'Dictado 5ºA · Acentuación diacrítica · 22 alumnos', time: 'Hace 1h', type: 'dictado' },
-  { title: 'Redacción corregida · Ana M. · Tema libre · 7.5/10', time: 'Ayer', type: 'redaccion' },
-  { title: 'Análisis sintáctico · "El libro era muy antiguo"', time: 'Martes', type: 'sintaxis' },
-  { title: 'Comentario · Fragmento Lazarillo de Tormes · 6ºB', time: 'Lunes', type: 'comentario' },
-];
-
-const TYPE_COLORS = { dictado: '#6B1F2A', redaccion: '#1F2A4D', sintaxis: '#2D4A6A', comentario: '#1A5C35' };
 
 export default function LenguaHome() {
   const navigate = useNavigate();
@@ -51,15 +43,7 @@ export default function LenguaHome() {
       </div>
 
       <SectionLabel className="mb-3">ACTIVIDAD RECIENTE</SectionLabel>
-      <div className="bg-card-bg border border-linea shadow-card divide-y divide-[rgba(184,169,136,0.25)]">
-        {RECENT.map((r, i) => (
-          <div key={i} className="flex items-center gap-3 px-4 py-3">
-            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: TYPE_COLORS[r.type] }} />
-            <span className="flex-1 text-[12.5px] text-tinta">{r.title}</span>
-            <span className="font-mono text-[10px] text-marron-soft">{r.time}</span>
-          </div>
-        ))}
-      </div>
+      <RecentActivityList moduleFilter="espanol" limit={6} />
     </div>
   );
 }

@@ -64,11 +64,13 @@ export default function SidebarStage({ stageKey, label, modules }) {
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        className="w-full flex items-center gap-2 px-5 pt-5 pb-2 text-[11px] tracking-[0.12em] text-marron-soft font-mono font-semibold uppercase hover:text-tinta transition-colors"
+        className="w-full flex items-center gap-2.5 px-5 pt-5 pb-3 text-[15px] tracking-[0.08em] text-tinta font-display font-semibold hover:text-marino transition-colors"
       >
-        <span className="text-[10px] inline-block w-2.5">{open ? '▾' : '▸'}</span>
+        <span className="text-[13px] inline-block w-3 text-marron-soft">{open ? '▾' : '▸'}</span>
         <span>{label}</span>
-        <span className="ml-auto text-[10px] opacity-60">{modules.length}</span>
+        <span className="ml-auto font-mono text-[12px] text-marron-soft opacity-70 border border-linea px-1.5 py-0.5">
+          {modules.length}
+        </span>
       </button>
 
       {open && (
