@@ -6,14 +6,19 @@ const { query } = require('../config/database');
 
 // Tipos válidos (informativo; no se valida en BD para permitir extensión).
 const TYPES = {
-  MODULE_ACTIVATED:   'module_activated',
-  MODULE_DEACTIVATED: 'module_deactivated',
-  TOOL_GENERATED:     'tool_generated',
-  EXAM_SAVED:         'exam_saved',
-  OCR_COMPLETED:      'ocr_completed',
-  INVOICE_PAID:       'invoice_paid',
-  AI_ERROR:           'ai_error',
-  SYSTEM:             'system',
+  MODULE_ACTIVATED:    'module_activated',
+  MODULE_DEACTIVATED:  'module_deactivated',
+  TOOL_GENERATED:      'tool_generated',
+  EXAM_SAVED:          'exam_saved',
+  OCR_COMPLETED:       'ocr_completed',
+  INVOICE_PAID:        'invoice_paid',
+  AI_ERROR:            'ai_error',
+  SYSTEM:              'system',
+  // Supervisión del admin (no son ruido del profe, son alertas accionables).
+  TEACHER_FIRST_LOGIN: 'teacher_first_login',
+  TEACHER_INACTIVE:    'teacher_inactive',
+  QUOTA_WARNING:       'quota_warning',
+  WEEKLY_DIGEST:       'weekly_digest',
 };
 
 // Crea una notificación para un usuario concreto.
@@ -62,4 +67,30 @@ const notifyRole = async ({ organizationId, role, type, title, body = null, link
   }
 };
 
-module.exports = { notify, notifyRole, TYPES };
+// Comprueba si un usuario ya recibió una notificación del mismo tipo + clave
+// de metadata en una ventana de tiempo. Sirve para evitar spam (avisos de
+// cuota repetidos en el mismo mes, profe inactivo repetido cada semana, etc.).
+// `metadataMatch` es un objeto cuyos pares se comprueban con el operador @>
+// de jsonb. Falla silencioso → devuelve false (no bloquear notificación).
+const wasRecentlyNotified = async ({ userId, type, metadataMatch = {}, withinHours = 24 }) => {
+  if (!userId || !type) return false;
+  try {
+    const { rows } = await query(
+      `SELECT 1 FROM notifications
+        WHERE user_id = $1
+          AND type = $2
+          AND metadata @> $3::jsonb
+          AND created_at > NOW() - ($4 || ' hours')::INTERVAL
+        LIMIT 1`,
+      [userId, type, JSON.stringify(metadataMatch), String(withinHours)]
+    );
+    return rows.length > 0;
+  } catch (err) {
+    if (err.code !== '42P01') {
+      console.warn('wasRecentlyNotified failed (non-fatal):', err.message);
+    }
+    return false;
+  }
+};
+
+module.exports = { notify, notifyRole, wasRecentlyNotified, TYPES };

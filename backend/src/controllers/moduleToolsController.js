@@ -4,6 +4,8 @@ const { runWithUsageCapture } = require('../services/claudeService');
 const { aiAvailable } = require('../utils/aiAvailable');
 const demoFixtures = require('../services/tools/demoFixtures');
 const { notify, TYPES: NOTIF_TYPES } = require('../services/notifyService');
+const { trackAiError } = require('../services/aiErrorThrottle');
+const { checkQuotaAfterUsage } = require('../services/quotaService');
 
 // GET /api/modules/:moduleId/tools
 // Lista las herramientas vinculadas al módulo, en orden.
@@ -178,6 +180,13 @@ const run = async (req, res, next) => {
           tool: toolKey,
         });
       }
+      // Throttle: si esta org acumula 3 errores IA del mismo código en 15 min,
+      // avisamos a los admins UNA vez. Cualquier código AI_* o BAD_AI_RESPONSE
+      // entra en el contador. Best-effort, no bloquea la respuesta al profe.
+      if (err.code && (err.code.startsWith('AI_') || err.code === 'BAD_AI_RESPONSE')) {
+        trackAiError({ orgId: ctx.orgId, code: err.code, message: err.message })
+          .catch((e) => console.warn('trackAiError failed (non-fatal):', e.message));
+      }
       if (err.code === 'BAD_AI_RESPONSE') {
         console.warn(`BAD_AI_RESPONSE on ${toolKey}:`, err.preview);
         return res.status(502).json({
@@ -243,6 +252,12 @@ const run = async (req, res, next) => {
     } catch (logErr) {
       console.warn('usage_logs insert failed (non-fatal):', logErr.message);
     }
+
+    // Aviso de cuota: comprueba si la org cruza un umbral (50/80/100%) del
+    // plan tras este consumo. Best-effort en background; no bloqueamos al
+    // profesor con un await (la notificación llegará en la siguiente vuelta
+    // de polling de la campana).
+    checkQuotaAfterUsage(ctx.orgId).catch(() => {});
 
     // Auto-persistencia en la biblioteca del centro. Best-effort: si falla,
     // el profesor sigue viendo su resultado. La biblioteca lo recoge sola.

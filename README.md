@@ -104,6 +104,10 @@ verigood/
 │       │   ├── pdfService.js             # renderers por output_kind + invoice
 │       │   ├── ocrSubjects.js            # config declarativa de OCR por asignatura
 │       │   ├── ocrSubjectCorrectorService.js
+│       │   ├── notifyService.js          # notify / notifyRole / wasRecentlyNotified
+│       │   ├── aiErrorThrottle.js        # alerta admin tras N errores IA en 15 min
+│       │   ├── quotaService.js           # avisos 50/80/100% del límite mensual
+│       │   ├── digestService.js          # resumen semanal + inactivos + retención
 │       │   └── tools/
 │       │       ├── index.js              # registro central
 │       │       ├── demoFixtures.js       # fixtures por output_kind
@@ -114,7 +118,11 @@ verigood/
 │       │   ├── 002_modules_catalog.sql
 │       │   ├── 003_module_tools.sql
 │       │   ├── 004_library_items.sql
-│       │   └── 005_notifications.sql
+│       │   ├── 005_notifications.sql
+│       │   ├── 006_user_modules.sql           # pivote profesor ↔ módulo
+│       │   └── 007_notifications_indices.sql  # anti-spam + retención
+│       ├── jobs/
+│       │   └── weeklyDigest.js                # cron PM2 (lunes 08:00)
 │       └── seeds/
 │           ├── 001_modules_catalog.sql   # 23 módulos
 │           ├── 002_module_tools.sql      # 56 tools + bindings
@@ -151,7 +159,12 @@ verigood/
 
 ## Módulos disponibles
 
-Los módulos viven en un **catálogo cerrado** (tabla `modules` + pivote `organization_modules`). Cada colegio activa/desactiva desde el panel de administración.
+Los módulos viven en un **catálogo cerrado** (tabla `modules`) y se gestionan en dos niveles:
+
+1. **Organización** — el `admin_centro` activa/desactiva módulos para todo el colegio vía pivote `organization_modules`.
+2. **Profesor** — el `admin_centro` asigna a cada profesor el subconjunto que le corresponde vía pivote `user_modules` (migración 006). Los profesores invitados arrancan **sin ningún módulo asignado**; el admin se los asigna desde `/dashboard/users` ("Módulos").
+
+`listOrgModules` devuelve todos los módulos del centro para `admin_centro` / `superadmin`, y solo el subconjunto asignado para `profesor`. `requireModule` y `requireModuleActive` exigen, además del módulo activo en la org, que el profe lo tenga en `user_modules`. Si el admin desactiva un módulo a nivel de centro, las asignaciones huérfanas se borran y se notifica solo a los profes realmente afectados.
 
 ### Primaria
 
@@ -339,19 +352,52 @@ Todos comparten paleta y tipografía "Cuaderno del Catedrático".
 
 ## Notificaciones in-app
 
-Sistema de alertas dentro de la app para `admin_centro` y `profesor`. Tabla `notifications` (migración 005) + helper `notifyService` invocado desde controladores.
+Sistema de alertas dentro de la app para `admin_centro` y `profesor`. Tabla `notifications` (migración 005) + índices anti-spam (migración 007) + helpers `notify` / `notifyRole` / `wasRecentlyNotified` en `notifyService`. 12 tipos canónicos.
 
 ### Eventos que disparan notificación
 
-| Flujo | Tipo | Destinatarios |
+**Profesor (autoconfirmaciones de su propia actividad):**
+
+| Flujo | Tipo | Destinatario |
 |---|---|---|
-| Admin activa un módulo | `module_activated` | Todos los profesores del centro |
-| Admin desactiva un módulo | `module_deactivated` | Todos los profesores del centro |
-| Profesor genera output con cualquier tool | `tool_generated` | El propio profesor |
-| Profesor guarda examen Cambridge | `exam_saved` | El propio profesor |
-| OCR completado (Cambridge o genérico) | `ocr_completed` | El profesor con la puntuación |
-| Stripe `checkout.session.completed` (webhook) | `invoice_paid` | Admins del centro |
-| Stripe `invoice.paid` (webhook) | `invoice_paid` | Admins del centro |
+| Admin le asigna un módulo | `module_activated` | El profe asignado |
+| Admin le desasigna un módulo, o desactiva uno que tenía | `module_deactivated` | Solo el/los profes afectados |
+| Genera un output con cualquier tool Fase 1 | `tool_generated` | El propio profe |
+| Guarda un examen Cambridge | `exam_saved` | El propio profe |
+| OCR completado (Cambridge o genérico) | `ocr_completed` | El propio profe |
+
+**Admin del centro (supervisión):**
+
+| Flujo | Tipo | Anti-spam |
+|---|---|---|
+| Stripe `checkout.session.completed` / `invoice.paid` | `invoice_paid` | — |
+| Un profe invitado entra por primera vez | `teacher_first_login` | 1 sola vez por profe (se dispara cuando `last_login` pasa de NULL) |
+| 3 errores IA del mismo código en 15 min | `ai_error` | Cooldown 1 h por (org, código). Contador en memoria (`aiErrorThrottle`) |
+| Org cruza 50 / 80 / 100% del límite mensual de tokens | `quota_warning` | 1 alerta por umbral y mes, vía `metadata.month + threshold` |
+| Profe sin entrar ≥ 14 días | `teacher_inactive` | 1 alerta por profe cada 14 días |
+| Resumen semanal (lunes 08:00 Madrid) | `weekly_digest` | 1 por org y semana, solo si hubo actividad |
+
+### Límites de cuota por plan
+
+Definidos en `services/quotaService.js` como constantes. Editar en código + redeploy si cambian los planes:
+
+```js
+PLAN_LIMITS = {
+  starter:    50_000,    // tokens/mes
+  colegio:    500_000,
+  enterprise: Infinity,
+}
+```
+
+### Job semanal
+
+`backend/src/jobs/weeklyDigest.js` corre en un proceso PM2 aparte (`verigood-digest`, `cron_restart: '0 8 * * 1'`) y hace tres cosas:
+
+1. **Digest** — para cada org activa con admins y actividad en últimos 7 días, agrega recursos generados, profes activos vs. totales y top 3 herramientas. Notifica `weekly_digest`.
+2. **Inactivos** — busca profes con `last_login` antiguo (o NULL si llevan creados >14 días) y avisa al admin.
+3. **Retención** — borra notificaciones leídas con `created_at < NOW() - 90 días`.
+
+Lanzar a mano: `node backend/src/jobs/weeklyDigest.js`.
 
 ### UI
 
@@ -479,7 +525,9 @@ Nunca se filtra el body crudo de Anthropic al usuario.
 ```
 superadmin       → Acceso total al sistema (interno VeriGood)
 admin_centro     → Gestiona su colegio: usuarios, módulos, biblioteca, facturación
-profesor         → Accede a los módulos activos de su organización
+                   → Asigna a cada profesor los módulos que le tocan (user_modules)
+profesor         → Solo ve y usa los módulos que el admin le haya asignado
+                   (subconjunto de los activos en la organización)
 ```
 
 JWT con dos tokens:
@@ -515,6 +563,8 @@ psql verigood_local < backend/src/migrations/002_modules_catalog.sql
 psql verigood_local < backend/src/migrations/003_module_tools.sql
 psql verigood_local < backend/src/migrations/004_library_items.sql
 psql verigood_local < backend/src/migrations/005_notifications.sql
+psql verigood_local < backend/src/migrations/006_user_modules.sql
+psql verigood_local < backend/src/migrations/007_notifications_indices.sql
 psql verigood_local < backend/src/seeds/001_modules_catalog.sql   # SISTEMA
 psql verigood_local < backend/src/seeds/002_module_tools.sql      # SISTEMA — 56 tools
 psql verigood_local < backend/src/seeds/dev_demo_data.sql         # DEMO
@@ -580,10 +630,11 @@ users                  → superadmin | admin_centro | profesor
 refresh_tokens         → rotating tokens
 modules                → Catálogo cerrado (23 módulos)
 organization_modules   → Pivote: módulos activos por org
+user_modules           → Pivote: módulos asignados a cada profesor (mig 006)
 module_tools           → 56 tools con input_schema + output_kind
 module_tool_bindings   → Pivote: qué tools tiene cada módulo
 library_items          → Biblioteca unificada (outputs de cualquier tool)
-notifications          → Notificaciones in-app (8 tipos canónicos, polling 30s)
+notifications          → Notificaciones in-app (12 tipos canónicos, polling 30s)
 exams                  → Cambridge legacy (questions JSONB)
 exam_questions         → Banco curado Cambridge (BD híbrida)
 exam_attempts          → Correcciones OCR Cambridge
@@ -608,8 +659,11 @@ Base URL: `https://verigood.es/api` (producción) · `http://localhost:3001/api`
 | **Módulos** | | |
 | GET | `/modules` | Catálogo global |
 | GET | `/organizations/:id/modules` | Módulos activos de la org |
-| POST | `/organizations/:id/modules/:moduleId/activate` | Activar módulo |
-| DELETE | `/organizations/:id/modules/:moduleId` | Desactivar |
+| POST | `/organizations/:id/modules/:moduleId/activate` | Activar módulo en el centro (admin) |
+| DELETE | `/organizations/:id/modules/:moduleId` | Desactivar (admin) |
+| GET | `/users/:userId/modules` | Módulos asignados a un profe |
+| POST | `/users/:userId/modules/:moduleId` | Asignar módulo al profe (admin) |
+| DELETE | `/users/:userId/modules/:moduleId` | Desasignar (admin) |
 | GET | `/organizations/:id/onboarding-state` | Estado onboarding |
 | POST | `/organizations/:id/onboarding-state/complete` | Marcar completado |
 | **Tools (catálogo Fase 1)** | | |
@@ -750,7 +804,9 @@ Ver `agentes/README.md` para el detalle de cada rol y cuándo saltar pasos.
 - ✅ Sistema PDF para todos los `output_kind` + facturas
 - ✅ Modo demo controlado en todos los subsistemas
 - ✅ Facturación con fallback fixture y PDF oficial Stripe
-- ✅ Notificaciones in-app con 7 flujos disparadores integrados
+- ✅ Notificaciones in-app con 12 tipos canónicos: feedback al profe + supervisión al admin (primer login, cuota 50/80/100%, errores IA throttled, profes inactivos, digest semanal)
+- ✅ Permisos por profesor: el admin asigna módulos individualmente vía `user_modules` (mig 006); el profe solo ve y usa los suyos
+- ✅ Job semanal `verigood-digest` en PM2 (resumen + inactivos + retención 90d)
 - ✅ Scaffolding de tests: Jest + Vitest + Playwright con ejemplos representativos
 
 **En curso / próximos pasos:**

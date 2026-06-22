@@ -26,7 +26,7 @@ Monorepo npm workspaces: `/frontend` (React + Vite) + `/backend` (Node + Express
 verigood/
 ├── package.json              # npm workspaces root
 ├── .env.example              # todas las variables de entorno
-├── ecosystem.config.js       # PM2 — cluster mode, 2 instancias
+├── ecosystem.config.js       # PM2 — backend cluster + cron `verigood-digest` (lunes 08:00)
 ├── nginx.conf                # reverse proxy, SSL, rate limiting
 ├── deploy.sh                 # script de despliegue VPS
 │
@@ -77,7 +77,10 @@ verigood/
 │       │   ├── ocrCorrectorService.js        # Google Vision + Claude Haiku (Cambridge)
 │       │   ├── ocrSubjectCorrectorService.js # OCR genérico para asignaturas
 │       │   ├── ocrSubjects.js                # config declarativa de qué módulos tienen OCR
-│       │   ├── notifyService.js              # helper notify() / notifyRole() best-effort
+│       │   ├── notifyService.js              # helper notify() / notifyRole() / wasRecentlyNotified()
+│       │   ├── aiErrorThrottle.js             # contador en memoria → 1 alerta al admin tras N errores IA
+│       │   ├── quotaService.js                # comprueba 50/80/100% del límite mensual de tokens
+│       │   ├── digestService.js               # resumen semanal + profes inactivos + retención
 │       │   ├── dynamicsService.js
 │       │   ├── presentationsService.js
 │       │   ├── lenguaService.js              # legacy
@@ -112,7 +115,11 @@ verigood/
 │       │   ├── 002_modules_catalog.sql       # tablas modules + organization_modules + onboarding
 │       │   ├── 003_module_tools.sql          # tablas module_tools + module_tool_bindings
 │       │   ├── 004_library_items.sql         # tabla library_items (biblioteca unificada)
-│       │   └── 005_notifications.sql         # tabla notifications (in-app)
+│       │   ├── 005_notifications.sql         # tabla notifications (in-app)
+│       │   ├── 006_user_modules.sql          # pivote user_modules — asignación profe ↔ módulo
+│       │   └── 007_notifications_indices.sql # índices anti-spam + retención
+│       ├── jobs/
+│       │   └── weeklyDigest.js               # cron PM2 — resumen semanal + profes inactivos + purge
 │       └── seeds/
 │           ├── 001_modules_catalog.sql       # SISTEMA — catálogo cerrado de módulos
 │           ├── 002_module_tools.sql          # SISTEMA — 56 tools + bindings
@@ -436,19 +443,26 @@ Sistema de alertas dentro de la app para `admin_centro` y `profesor`. Tabla `not
 ```
 module_activated   · module_deactivated · tool_generated · exam_saved
 ocr_completed      · invoice_paid       · ai_error       · system
+teacher_first_login · teacher_inactive  · quota_warning  · weekly_digest
 ```
 
 ### Disparadores integrados
 
 | Flujo | Tipo | Destinatarios |
 |---|---|---|
-| Admin activa módulo | `module_activated` | Todos los profesores de la org |
-| Admin desactiva módulo | `module_deactivated` | Todos los profesores de la org |
+| Admin asigna módulo a un profe | `module_activated` | El profesor asignado |
+| Admin desactiva módulo de la org | `module_deactivated` | Solo profes que tenían ese módulo asignado |
+| Admin desasigna módulo a un profe | `module_deactivated` | El profesor afectado |
 | Profesor genera output de tool (Fase 1) | `tool_generated` | El propio profesor |
 | Profesor guarda examen Cambridge | `exam_saved` | El propio profesor |
 | OCR completado (Cambridge o genérico) | `ocr_completed` | El propio profesor |
 | Stripe webhook `checkout.session.completed` | `invoice_paid` | Admins del centro |
 | Stripe webhook `invoice.paid` | `invoice_paid` | Admins del centro |
+| Profe invitado entra por primera vez | `teacher_first_login` | Admins del centro |
+| 3 errores IA del mismo código en 15 min | `ai_error` | Admins del centro (1 sola alerta, cooldown 1h) |
+| Org cruza 50/80/100% del límite mensual | `quota_warning` | Admins del centro (1 vez por umbral y mes) |
+| Profe sin entrar ≥ 14 días | `teacher_inactive` | Admins del centro (1 por profe cada 14 días) |
+| Resumen semanal (lunes 08:00) | `weekly_digest` | Admins del centro (si hubo actividad esa semana) |
 
 ### Helper
 
@@ -692,6 +706,7 @@ psql $DATABASE_URL -f backend/src/migrations/003_module_tools.sql
 psql $DATABASE_URL -f backend/src/migrations/004_library_items.sql
 psql $DATABASE_URL -f backend/src/migrations/005_notifications.sql
 psql $DATABASE_URL -f backend/src/migrations/006_user_modules.sql
+psql $DATABASE_URL -f backend/src/migrations/007_notifications_indices.sql
 
 # Seeds de SISTEMA (idempotentes, ON CONFLICT)
 psql $DATABASE_URL -f backend/src/seeds/001_modules_catalog.sql   # 23 módulos
@@ -832,10 +847,14 @@ chmod +x deploy.sh
 # Comando rápido si ya está configurado
 ./deploy.sh --skip-migrate
 
-# PM2
+# PM2 — dos procesos: backend (cluster x2) y digest (cron lunes 08:00)
 pm2 status
 pm2 logs verigood-backend
+pm2 logs verigood-digest                 # job semanal: resumen + profes inactivos + purge
 pm2 reload ecosystem.config.js --env production
+
+# Lanzar el digest manualmente (no espera al cron):
+node backend/src/jobs/weeklyDigest.js
 
 # Nginx
 nginx -t && systemctl reload nginx

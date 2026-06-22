@@ -4,14 +4,19 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../../services/api';
 
 const TYPE_ACCENT = {
-  module_activated:   '#1F2A4D',
-  module_deactivated: '#6B1F2A',
-  tool_generated:     '#1A5C35',
-  exam_saved:         '#1F2A4D',
-  ocr_completed:      '#1A5C35',
-  invoice_paid:       '#1F2A4D',
-  ai_error:           '#6B1F2A',
-  system:             '#B8A988',
+  module_activated:    '#1F2A4D',
+  module_deactivated:  '#6B1F2A',
+  tool_generated:      '#1A5C35',
+  exam_saved:          '#1F2A4D',
+  ocr_completed:       '#1A5C35',
+  invoice_paid:        '#1F2A4D',
+  ai_error:            '#6B1F2A',
+  system:              '#B8A988',
+  // Alertas de supervisión al admin.
+  teacher_first_login: '#1A5C35',  // verde — bienvenida positiva
+  teacher_inactive:    '#E8D89A',  // amarillo — atención sin urgencia
+  quota_warning:       '#E8D89A',  // amarillo — antes del bloqueo
+  weekly_digest:       '#1F2A4D',  // marino — informativo
 };
 
 const formatRelative = (iso) => {

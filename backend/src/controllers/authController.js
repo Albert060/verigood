@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { query, getClient } = require('../config/database');
+const { notifyRole, TYPES } = require('../services/notifyService');
 
 const generateTokens = (userId, role, orgId) => {
   const accessToken = jwt.sign(
@@ -94,7 +95,7 @@ const login = async (req, res) => {
     }
 
     const result = await query(
-      `SELECT u.id, u.name, u.email, u.password_hash, u.role, u.is_active,
+      `SELECT u.id, u.name, u.email, u.password_hash, u.role, u.is_active, u.last_login,
               u.organization_id, o.name as org_name, o.plan, o.active_modules, o.is_active as org_active
        FROM users u
        LEFT JOIN organizations o ON u.organization_id = o.id
@@ -130,8 +131,21 @@ const login = async (req, res) => {
       [user.id, refreshToken]
     );
 
-    // Update last login
+    // Update last login. Si era el PRIMER login de un profesor invitado,
+    // avisamos a los admins del centro (best-effort).
+    const wasFirstLogin = user.role === 'profesor' && !user.last_login;
     await query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
+    if (wasFirstLogin && user.organization_id) {
+      await notifyRole({
+        organizationId: user.organization_id,
+        role: 'admin_centro',
+        type: TYPES.TEACHER_FIRST_LOGIN,
+        title: `${user.name} ha entrado por primera vez`,
+        body: 'El profesor ha activado su cuenta. Revisa los módulos que tiene asignados.',
+        link: '/dashboard/users',
+        metadata: { teacherId: user.id },
+      });
+    }
 
     res.json({
       accessToken,
