@@ -126,12 +126,16 @@ export default function InstitutionalDashboard() {
       {/* Usage + Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-card-bg border border-linea shadow-card rounded-2xl p-6">
-          <SectionLabel className="mb-5">USO POR MÓDULO — 30 DÍAS</SectionLabel>
+          <SectionLabel className="mb-5">
+            {user?.role === 'profesor' ? 'TU USO POR MÓDULO — 30 DÍAS' : 'USO POR MÓDULO — 30 DÍAS'}
+          </SectionLabel>
           {usageByModule.length === 0 ? (
             <EmptyState
               glyph="∅"
               title="Sin actividad todavía"
-              description="Cuando tu equipo empiece a usar la plataforma, verás aquí el consumo."
+              description={user?.role === 'profesor'
+                ? 'Cuando empieces a generar recursos verás aquí tu consumo.'
+                : 'Cuando tu equipo empiece a usar la plataforma, verás aquí el consumo.'}
             />
           ) : (
             <div className="space-y-5">
@@ -149,7 +153,9 @@ export default function InstitutionalDashboard() {
         </div>
 
         <div className="lg:col-span-2 bg-card-bg border border-linea shadow-card rounded-2xl p-6">
-          <SectionLabel className="mb-5">ACTIVIDAD RECIENTE</SectionLabel>
+          <SectionLabel className="mb-5">
+            {user?.role === 'profesor' ? 'TU ACTIVIDAD RECIENTE' : 'ACTIVIDAD RECIENTE'}
+          </SectionLabel>
           <RecentActivityList limit={10} />
         </div>
       </div>

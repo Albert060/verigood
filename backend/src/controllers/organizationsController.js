@@ -74,6 +74,16 @@ const getStats = async (req, res) => {
       return res.status(403).json({ error: 'Acceso denegado' });
     }
 
+    // Visibilidad de actividad reciente / consumo por módulo:
+    // - admin_centro y superadmin ven toda la org.
+    // - profesor ve solo lo que él mismo ha generado. El criterio "módulos
+    //   asignados" se cumple por construcción: requireModuleActive impide
+    //   ejecutar tools de módulos no asignados, así que el conjunto de
+    //   usage_logs.user_id = req.user.id ya está acotado a esos módulos.
+    const isProfesor = req.user.role === 'profesor';
+    const ownerFilter = isProfesor ? ' AND ul.user_id = $2' : '';
+    const ownerParams = isProfesor ? [orgId, req.user.id] : [orgId];
+
     const [usersResult, usageResult, recentResult] = await Promise.all([
       query(
         `SELECT COUNT(*) FILTER (WHERE is_active) as active_users,
@@ -82,13 +92,14 @@ const getStats = async (req, res) => {
         [orgId]
       ),
       query(
-        `SELECT module, action_type, COUNT(*) as count
-         FROM usage_logs
-         WHERE organization_id = $1
-           AND created_at >= NOW() - INTERVAL '30 days'
-         GROUP BY module, action_type
+        `SELECT ul.module, ul.action_type, COUNT(*) as count
+         FROM usage_logs ul
+         WHERE ul.organization_id = $1
+           AND ul.created_at >= NOW() - INTERVAL '30 days'
+           ${ownerFilter}
+         GROUP BY ul.module, ul.action_type
          ORDER BY count DESC`,
-        [orgId]
+        ownerParams
       ),
       query(
         `SELECT ul.action_type, ul.module, ul.created_at,
@@ -96,9 +107,10 @@ const getStats = async (req, res) => {
          FROM usage_logs ul
          JOIN users u ON ul.user_id = u.id
          WHERE ul.organization_id = $1
+           ${ownerFilter}
          ORDER BY ul.created_at DESC
          LIMIT 10`,
-        [orgId]
+        ownerParams
       ),
     ]);
 

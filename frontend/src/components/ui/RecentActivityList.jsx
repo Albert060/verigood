@@ -92,6 +92,10 @@ export default function RecentActivityList({ moduleFilter, limit = 6 }) {
     return filtered.slice(0, limit);
   }, [stats, moduleFilter, limit]);
 
+  // El backend ya filtra por user_id si el rol es profesor, así que la copia
+  // del estado vacío debe reflejar lo que verá realmente cada rol.
+  const isProfesor = (me?.role || user?.role) === 'profesor';
+
   return (
     <div className="bg-card-bg border border-linea shadow-card">
       {/* Botón discreto de recarga manual — útil cuando el caché parece
@@ -120,7 +124,9 @@ export default function RecentActivityList({ moduleFilter, limit = 6 }) {
           <div className="font-display italic text-[26px] text-[rgba(184,169,136,0.3)] mb-1">§</div>
           <p className="font-mono text-[11px] text-marron-soft">Aún no hay actividad reciente.</p>
           <p className="font-mono text-[10px] text-marron-soft mt-1">
-            Las acciones de tu equipo aparecerán aquí en tiempo real.
+            {isProfesor
+              ? 'Tus generaciones aparecerán aquí en cuanto uses una herramienta.'
+              : 'Las acciones de tu equipo aparecerán aquí en tiempo real.'}
           </p>
         </div>
       )}
