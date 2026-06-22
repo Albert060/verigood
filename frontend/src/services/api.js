@@ -123,6 +123,9 @@ export const modulesApi = {
   listOrgModules: (orgId) => api.get(`/organizations/${orgId}/modules`),
   activate: (orgId, moduleId) => api.post(`/organizations/${orgId}/modules/${moduleId}/activate`),
   deactivate: (orgId, moduleId) => api.delete(`/organizations/${orgId}/modules/${moduleId}`),
+  listUserModules: (userId) => api.get(`/users/${userId}/modules`),
+  assignUserModule: (userId, moduleId) => api.post(`/users/${userId}/modules/${moduleId}`),
+  unassignUserModule: (userId, moduleId) => api.delete(`/users/${userId}/modules/${moduleId}`),
 };
 
 // ── Module tools (catálogo de herramientas + ejecución) ──────

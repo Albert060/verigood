@@ -175,9 +175,13 @@ JWT access tokens (15 min) + rotating refresh tokens (7 días, en PostgreSQL).
 |------|--------|
 | `superadmin` | `/superadmin/*` — gestiona organizaciones, facturación global |
 | `admin_centro` | `/dashboard/*` — gestiona usuarios, módulos, stats, biblioteca, facturación |
-| `profesor` | `/dashboard` (lectura) + módulos activos de su org |
+| `profesor` | `/dashboard` (lectura) + módulos **asignados** por el admin (subconjunto de los activos de la org) |
 
-`requireModule(name)` y `requireModuleActive` (variante paramétrica que lee `moduleId` de `req.params`) comprueban `organization_modules` antes de cada ruta IA.
+`requireModule(name)` y `requireModuleActive` (variante paramétrica que lee `moduleId` de `req.params`) comprueban:
+1. que el módulo esté activo en `organization_modules` para la org del usuario, y
+2. si el usuario es `profesor`, que además figure en `user_modules` para ese módulo.
+
+`admin_centro` y `superadmin` solo necesitan (1). La gestión de asignaciones se hace vía `POST/DELETE /api/users/:userId/modules/:moduleId` (admin de la propia org). Cuando un admin desactiva un módulo a nivel de org, las filas de `user_modules` correspondientes se borran en cascada lógica para no dejar accesos huérfanos.
 
 ---
 
@@ -558,6 +562,9 @@ GET    /api/modules                                          # catálogo global
 GET    /api/organizations/:orgId/modules                     # módulos activos
 POST   /api/organizations/:orgId/modules/:moduleId/activate
 DELETE /api/organizations/:orgId/modules/:moduleId
+GET    /api/users/:userId/modules                            # módulos asignados al profesor
+POST   /api/users/:userId/modules/:moduleId                  # admin asigna módulo
+DELETE /api/users/:userId/modules/:moduleId                  # admin desasigna módulo
 GET    /api/organizations/:orgId/onboarding-state
 POST   /api/organizations/:orgId/onboarding-state/complete
 ```
@@ -684,6 +691,7 @@ psql $DATABASE_URL -f backend/src/migrations/002_modules_catalog.sql
 psql $DATABASE_URL -f backend/src/migrations/003_module_tools.sql
 psql $DATABASE_URL -f backend/src/migrations/004_library_items.sql
 psql $DATABASE_URL -f backend/src/migrations/005_notifications.sql
+psql $DATABASE_URL -f backend/src/migrations/006_user_modules.sql
 
 # Seeds de SISTEMA (idempotentes, ON CONFLICT)
 psql $DATABASE_URL -f backend/src/seeds/001_modules_catalog.sql   # 23 módulos
@@ -793,6 +801,8 @@ users                 -- superadmin | admin_centro | profesor
 refresh_tokens        -- rotating tokens
 modules               -- catálogo cerrado (id, name, stage, category, icon, route_prefix)
 organization_modules  -- pivote: qué módulos tiene activos cada org
+user_modules          -- pivote: qué módulos están asignados a cada profesor
+                      --   (subconjunto de organization_modules de su org)
 module_tools          -- catálogo declarativo de tools (key, output_kind, input_schema)
 module_tool_bindings  -- pivote: qué tools tiene cada módulo
 library_items         -- biblioteca unificada: outputs de cualquier tool persistidos

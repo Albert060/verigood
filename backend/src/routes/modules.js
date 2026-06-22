@@ -7,6 +7,9 @@ const {
   deactivateModule,
   getOnboardingState,
   completeOnboarding,
+  listUserModules,
+  assignUserModule,
+  unassignUserModule,
 } = require('../controllers/modulesController');
 
 const router = express.Router();
@@ -29,6 +32,22 @@ router.delete(
   authenticate,
   authorize('admin_centro', 'superadmin'),
   deactivateModule
+);
+
+// Asignación profesor↔módulo (admin de la propia org o superadmin).
+// El propio profesor puede leer sus asignaciones.
+router.get('/users/:userId/modules', authenticate, listUserModules);
+router.post(
+  '/users/:userId/modules/:moduleId',
+  authenticate,
+  authorize('admin_centro', 'superadmin'),
+  assignUserModule
+);
+router.delete(
+  '/users/:userId/modules/:moduleId',
+  authenticate,
+  authorize('admin_centro', 'superadmin'),
+  unassignUserModule
 );
 
 // Onboarding state

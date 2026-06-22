@@ -97,6 +97,41 @@ const invalidateOrgModules = (orgId) => {
   moduleCache.delete(orgId);
 };
 
+// ── Cache de módulos asignados por usuario (profesor) ─────────
+// Misma estrategia que getOrgModules pero a nivel de user_id. Se invalida
+// desde el controller que asigna/desasigna módulos a un profesor.
+const userModuleCache = new Map(); // userId -> { modules: Set<string>, expiresAt: number }
+
+const getUserModules = async (userId) => {
+  const hit = userModuleCache.get(userId);
+  if (hit && hit.expiresAt > Date.now()) return hit.modules;
+
+  const { rows } = await query(
+    `SELECT module_id FROM user_modules WHERE user_id = $1`,
+    [userId]
+  );
+  const set = new Set(rows.map((r) => r.module_id));
+  userModuleCache.set(userId, { modules: set, expiresAt: Date.now() + MODULE_CACHE_TTL_MS });
+  return set;
+};
+
+const invalidateUserModules = (userId) => {
+  userModuleCache.delete(userId);
+};
+
+// Comprueba que el módulo esté activo en la org Y, si el usuario es profesor,
+// que además le esté asignado. admin_centro y superadmin pasan con solo el
+// chequeo de organización.
+const userCanAccessModule = async (user, moduleId) => {
+  const orgMods = await getOrgModules(user.organization_id);
+  if (!orgMods.has(moduleId)) return { ok: false, code: 'MODULE_INACTIVE' };
+  if (user.role === 'profesor') {
+    const userMods = await getUserModules(user.id);
+    if (!userMods.has(moduleId)) return { ok: false, code: 'MODULE_NOT_ASSIGNED' };
+  }
+  return { ok: true };
+};
+
 const requireModule = (moduleId) => {
   return async (req, res, next) => {
     try {
@@ -104,12 +139,14 @@ const requireModule = (moduleId) => {
       if (!orgId) {
         return res.status(403).json({ error: 'Sin organización', code: 'NO_ORG' });
       }
-      const mods = await getOrgModules(orgId);
-      if (!mods.has(moduleId)) {
+      const check = await userCanAccessModule(req.user, moduleId);
+      if (!check.ok) {
         return res.status(403).json({
-          error: 'Módulo no activado',
+          error: check.code === 'MODULE_NOT_ASSIGNED'
+            ? 'Módulo no asignado a este profesor'
+            : 'Módulo no activado',
           module: moduleId,
-          code: 'MODULE_INACTIVE',
+          code: check.code,
         });
       }
       next();
@@ -135,12 +172,14 @@ const requireModuleActive = async (req, res, next) => {
     }
     // superadmin atraviesa la comprobación (acceso global).
     if (req.user.role === 'superadmin') return next();
-    const mods = await getOrgModules(orgId);
-    if (!mods.has(moduleId)) {
+    const check = await userCanAccessModule(req.user, moduleId);
+    if (!check.ok) {
       return res.status(403).json({
-        error: 'Módulo no activado',
+        error: check.code === 'MODULE_NOT_ASSIGNED'
+          ? 'Módulo no asignado a este profesor'
+          : 'Módulo no activado',
         module: moduleId,
-        code: 'MODULE_INACTIVE',
+        code: check.code,
       });
     }
     next();
@@ -157,4 +196,7 @@ module.exports = {
   requireModule,
   requireModuleActive,
   invalidateOrgModules,
+  invalidateUserModules,
+  getUserModules,
+  userCanAccessModule,
 };
