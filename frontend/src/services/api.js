@@ -214,6 +214,9 @@ export const stripeApi = {
   portal: () => api.post('/stripe/portal'),
   getInvoices: () => api.get('/stripe/invoices'),
   getInvoice: (id) => api.get(`/stripe/invoices/${id}`),
+  status: () => api.get('/stripe/status'),
+  cancelSubscription: () => api.post('/stripe/subscription/cancel'),
+  resumeSubscription: () => api.post('/stripe/subscription/resume'),
 };
 
 // ── PDF / Demo status ────────────────────────────────────────

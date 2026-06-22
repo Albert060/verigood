@@ -190,6 +190,13 @@ JWT access tokens (15 min) + rotating refresh tokens (7 días, en PostgreSQL).
 
 `admin_centro` y `superadmin` solo necesitan (1). La gestión de asignaciones se hace vía `POST/DELETE /api/users/:userId/modules/:moduleId` (admin de la propia org). Cuando un admin desactiva un módulo a nivel de org, las filas de `user_modules` correspondientes se borran en cascada lógica para no dejar accesos huérfanos.
 
+### Visibilidad de actividad reciente
+
+`GET /api/organizations/:orgId/stats` (controller `organizationsController.getStats`) sirve tanto el dashboard institucional como `RecentActivityList`. Filtra `usage_logs` por rol:
+
+- `admin_centro` y `superadmin` → toda la actividad de la org (consumo por módulo + últimas 10 acciones).
+- `profesor` → solo sus propias filas (`ul.user_id = req.user.id`). El criterio "solo módulos asignados" se cumple por construcción: `requireModuleActive` impide registrar `usage_logs` de módulos no asignados, así que el conjunto del profe ya está acotado a sus módulos. No hace falta JOIN extra contra `user_modules` (que además rompería el histórico si el admin retira un módulo después).
+
 ---
 
 ## Módulos
@@ -627,8 +634,11 @@ POST   /api/cambridge/presentations/generate
 ### Stripe / Facturación
 ```
 GET  /api/stripe/plans
+GET  /api/stripe/status                                      # configured + plan + customer + subscription
 POST /api/stripe/checkout
-POST /api/stripe/portal
+POST /api/stripe/portal                                      # 503 STRIPE_NOT_CONFIGURED · 409 NO_CUSTOMER
+POST /api/stripe/subscription/cancel                         # cancel_at_period_end = true
+POST /api/stripe/subscription/resume                         # revierte cancelación programada
 GET  /api/stripe/invoices                                    # Stripe real con fallback fixture
 GET  /api/stripe/invoices/:id
 POST /api/stripe/webhook                                     # raw body — ANTES de express.json()
@@ -829,6 +839,7 @@ exam_questions        -- banco de preguntas Cambridge curadas (BD híbrida)
 exam_attempts         -- intentos de corrección OCR Cambridge
 resources             -- DEPRECATED (hoy biblioteca = library_items + exams)
 usage_logs            -- registro de consumo IA por org/usuario/tool
+                      --   getStats lo filtra por user_id si el rol es profesor
 ```
 
 ---
@@ -876,5 +887,6 @@ SSL con Let's Encrypt: `certbot --nginx -d verigood.es -d www.verigood.es`
 - **Onboarding**: una org sin `onboarding_completed_at` ve el `OnboardingHero` en el dashboard institucional. La sidebar oculta etapas sin módulos activos. Estado expandido/contraído de la sidebar: `localStorage`.
 - **Modo demo**: si `aiAvailable()` falsea, el dispatcher de tools cortocircuita con `demoFixtures.forKind(...)`. No es bug, es funcionalidad.
 - **Facturas**: `renderInvoice` produce PDF con número correlativo, fechas, base imponible, IVA 21%, total, sello PAGADA/PENDIENTE y pie legal RGPD. Si la org tiene `stripe_customer_id` real, se usan facturas oficiales Stripe vía `invoice_pdf`. Si no, fixture backend (6 meses) y, como último fallback, 4 ejemplos precargados en el frontend.
+- **Gestión de suscripción**: el CTA "Gestionar suscripción" en `/dashboard/billing` navega a `/dashboard/billing/manage` (componente `ManageBilling`). Tres bloques: (1) cambio de plan vía `/stripe/checkout`, (2) método de pago vía Customer Portal de Stripe (`/stripe/portal`), (3) cancelación al final del periodo vía `/stripe/subscription/cancel` (también `resume` para revertirla). `stripeAvailable()` (`utils/stripeAvailable.js`) mismo patrón que `aiAvailable()`: detecta clave real (no PLACEHOLDER, prefijo `sk_`). En modo demo la página se muestra con banner y CTAs deshabilitados.
 - **Notificaciones**: `notifyService` es best-effort — si falla (tabla no migrada, etc.) lo registra en logs pero **nunca rompe** el flujo del caller. Polling cada 30s en el frontend; migrar a WebSockets cuando haga falta inmediatez real. Tipos canónicos: ver `TYPES` en `notifyService.js`.
 - **Tests**: scaffolding completo con Jest (backend) + Vitest (frontend) + Playwright (e2e). Los e2e asumen modo demo (sin clave de IA) para no golpear Anthropic en CI. Ejecutar: `npm test`, `npm run test:e2e`.

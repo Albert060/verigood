@@ -26,6 +26,7 @@ import InstitutionalResources from './pages/institutional/Resources';
 import InstitutionalResourceDetail from './pages/institutional/ResourceDetail';
 import InstitutionalStats from './pages/institutional/Stats';
 import InstitutionalBilling from './pages/institutional/Billing';
+import ManageBilling from './pages/institutional/ManageBilling';
 
 // Cambridge
 import CambridgeLayout from './pages/cambridge/CambridgeLayout';
@@ -136,6 +137,7 @@ export default function App() {
           <Route path="resources/:id" element={<InstitutionalResourceDetail />} />
           <Route path="stats" element={<ProtectedRoute roles={['admin_centro']}><InstitutionalStats /></ProtectedRoute>} />
           <Route path="billing" element={<ProtectedRoute roles={['admin_centro']}><InstitutionalBilling /></ProtectedRoute>} />
+          <Route path="billing/manage" element={<ProtectedRoute roles={['admin_centro']}><ManageBilling /></ProtectedRoute>} />
         </Route>
 
         {/* Cambridge */}

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { stripeApi, pdfApi } from '../../services/api';
 import { PageHeader, Button, SectionLabel } from '../../components/ui';
 
@@ -96,7 +97,7 @@ const FALLBACK_INVOICES = [
 ];
 
 export default function InstitutionalBilling() {
-  const [loadingPortal, setLoadingPortal] = useState(false);
+  const navigate = useNavigate();
   const [downloadingId, setDownloadingId] = useState(null);
 
   const { data: invoicesResp, isLoading: loadingInvoices, isError } = useQuery({
@@ -117,15 +118,10 @@ export default function InstitutionalBilling() {
     [invoices]
   );
 
-  const openPortal = async () => {
-    setLoadingPortal(true);
-    try {
-      const { data } = await stripeApi.portal();
-      window.location.href = data.url;
-    } catch {
-      setLoadingPortal(false);
-    }
-  };
+  // El CTA "Gestionar suscripción" abre nuestra propia página de gestión
+  // (/dashboard/billing/manage), que internamente delega en Stripe (portal /
+  // checkout) o degrada a CTAs deshabilitados si Stripe no está configurado.
+  const goToManage = () => navigate('/dashboard/billing/manage');
 
   // Reglas de descarga, en este orden:
   //   1. Si trae invoice_pdf (Stripe real) → abrimos el PDF oficial.
@@ -195,7 +191,7 @@ export default function InstitutionalBilling() {
             </div>
           </div>
           <div className="flex flex-col items-end justify-end gap-2">
-            <Button loading={loadingPortal} onClick={openPortal}>
+            <Button onClick={goToManage}>
               Gestionar suscripción
             </Button>
             <p className="font-mono text-[10px] text-marron-soft text-right">Cambia plan, actualiza pago o cancela</p>

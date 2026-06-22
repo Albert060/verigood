@@ -317,6 +317,18 @@ DELETE /api/library/items/:id
 2. **Fixture backend** — 6 meses retroactivos del plan en curso (IVA 21% calculado, nº derivado del orgId).
 3. **Fallback frontend** — 4 facturas precargadas en `Billing.jsx` como ejemplo descargable mientras el backend no responda.
 
+### Gestión de suscripción
+
+El CTA **"Gestionar suscripción"** de `/dashboard/billing` navega a `/dashboard/billing/manage` (`ManageBilling.jsx`). La página tiene tres bloques alineados con el patrón Stripe:
+
+| Bloque | Acción | Endpoint |
+|---|---|---|
+| § I · Cambiar de plan | Lista de planes, botón "Cambiar" por cada uno | `POST /api/stripe/checkout` → Stripe Checkout |
+| § II · Método de pago | Botón "Abrir portal de Stripe" | `POST /api/stripe/portal` → Customer Portal |
+| § III · Cancelar suscripción | Confirmación + corte al final del periodo | `POST /api/stripe/subscription/cancel` (set `cancel_at_period_end=true`) |
+
+`GET /api/stripe/status` alimenta la página con `{ configured, plan, hasCustomer, subscription }`. Cuando `configured = false` (clave de Stripe ausente o `PLACEHOLDER`, ver `utils/stripeAvailable.js`), la UI se renderiza completa pero los CTAs salen `disabled` con un banner explicativo. Si hay cancelación programada, aparece la opción **"Reactivar"** (`POST /api/stripe/subscription/resume`) hasta el último día del periodo.
+
 ### PDF de factura
 
 Renderer `renderInvoice` ([pdfService.js](backend/src/services/pdfService.js)) produce un PDF con:
@@ -526,8 +538,10 @@ Nunca se filtra el body crudo de Anthropic al usuario.
 superadmin       → Acceso total al sistema (interno VeriGood)
 admin_centro     → Gestiona su colegio: usuarios, módulos, biblioteca, facturación
                    → Asigna a cada profesor los módulos que le tocan (user_modules)
+                   → Ve la actividad reciente de TODOS los profesores del centro
 profesor         → Solo ve y usa los módulos que el admin le haya asignado
-                   (subconjunto de los activos en la organización)
+                   → En "Actividad reciente" solo ve SUS propias generaciones
+                   (filtrado en backend por user_id en GET /organizations/:id/stats)
 ```
 
 JWT con dos tokens:
@@ -639,6 +653,7 @@ exams                  → Cambridge legacy (questions JSONB)
 exam_questions         → Banco curado Cambridge (BD híbrida)
 exam_attempts          → Correcciones OCR Cambridge
 usage_logs             → Consumo IA por org/user/tool
+                         (getStats lo filtra por user_id si el rol es profesor)
 resources              → DEPRECATED (hoy = library_items + exams)
 ```
 
@@ -664,6 +679,7 @@ Base URL: `https://verigood.es/api` (producción) · `http://localhost:3001/api`
 | GET | `/users/:userId/modules` | Módulos asignados a un profe |
 | POST | `/users/:userId/modules/:moduleId` | Asignar módulo al profe (admin) |
 | DELETE | `/users/:userId/modules/:moduleId` | Desasignar (admin) |
+| GET | `/organizations/:id/stats` | Stats + actividad reciente (admin: toda la org; profe: solo lo suyo) |
 | GET | `/organizations/:id/onboarding-state` | Estado onboarding |
 | POST | `/organizations/:id/onboarding-state/complete` | Marcar completado |
 | **Tools (catálogo Fase 1)** | | |
@@ -694,8 +710,11 @@ Base URL: `https://verigood.es/api` (producción) · `http://localhost:3001/api`
 | POST | `/cambridge/presentations/generate` | Prompt NotebookLM |
 | **Stripe / Facturación** | | |
 | GET | `/stripe/plans` | Planes disponibles |
-| POST | `/stripe/checkout` | Crear sesión de pago |
-| POST | `/stripe/portal` | Portal de facturación |
+| POST | `/stripe/checkout` | Crear sesión de pago (cambio/alta de plan) |
+| POST | `/stripe/portal` | Portal de pago oficial de Stripe |
+| GET | `/stripe/status` | `configured` + `plan` + `hasCustomer` + `subscription` |
+| POST | `/stripe/subscription/cancel` | Cancela al final del periodo (cancel_at_period_end) |
+| POST | `/stripe/subscription/resume` | Revierte cancelación programada |
 | GET | `/stripe/invoices` | Histórico (Stripe real con fallback fixture) |
 | GET | `/stripe/invoices/:id` | Detalle de una factura |
 | POST | `/stripe/webhook` | Raw body (registrado ANTES de express.json) |
@@ -804,6 +823,7 @@ Ver `agentes/README.md` para el detalle de cada rol y cuándo saltar pasos.
 - ✅ Sistema PDF para todos los `output_kind` + facturas
 - ✅ Modo demo controlado en todos los subsistemas
 - ✅ Facturación con fallback fixture y PDF oficial Stripe
+- ✅ Gestión de suscripción: cambio de plan, método de pago y cancelación con `cancel_at_period_end` (página propia + Stripe Customer Portal)
 - ✅ Notificaciones in-app con 12 tipos canónicos: feedback al profe + supervisión al admin (primer login, cuota 50/80/100%, errores IA throttled, profes inactivos, digest semanal)
 - ✅ Permisos por profesor: el admin asigna módulos individualmente vía `user_modules` (mig 006); el profe solo ve y usa los suyos
 - ✅ Job semanal `verigood-digest` en PM2 (resumen + inactivos + retención 90d)
