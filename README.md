@@ -86,6 +86,7 @@ verigood/
 │       ├── config/database.js
 │       ├── middleware/auth.js
 │       ├── utils/aiAvailable.js          # detección de clave IA válida
+│       ├── utils/stripeAvailable.js      # detección de clave Stripe válida
 │       ├── controllers/
 │       │   ├── moduleToolsController.js  # dispatcher tools + auto-persistencia
 │       │   ├── moduleOcrController.js    # OCR genérico por asignatura
@@ -143,9 +144,10 @@ verigood/
 │           ├── auth/
 │           ├── landing/
 │           ├── superadmin/
-│           ├── institutional/            # Dashboard, Users, Modules, Stats,
+│           ├── institutional/            # Dashboard, Users (CRUD profes con asignación
+│           │                             # de módulos), Modules, Stats (datos reales),
 │           │                             # Resources (biblioteca), ResourceDetail,
-│           │                             # Billing (con PDF facturas)
+│           │                             # Billing + ManageBilling (/billing/manage)
 │           ├── module/                   # ModuleLayout, ModuleHome,
 │           │                             # ToolPage, ModuleOcrPage
 │           └── cambridge/                # layout dedicado
@@ -831,6 +833,10 @@ Ver `agentes/README.md` para el detalle de cada rol y cuándo saltar pasos.
 - ✅ Gestión de suscripción: cambio de plan, método de pago y cancelación con `cancel_at_period_end` (página propia + Stripe Customer Portal)
 - ✅ Notificaciones in-app con 12 tipos canónicos: feedback al profe + supervisión al admin (primer login, cuota 50/80/100%, errores IA throttled, profes inactivos, digest semanal)
 - ✅ Permisos por profesor: el admin asigna módulos individualmente vía `user_modules` (mig 006); el profe solo ve y usa los suyos
+- ✅ CRUD profesores desde el panel admin: invitar, editar (nombre/rol), desactivar y eliminación real (con salvaguardas `HAS_ACTIVITY` / `LAST_ADMIN` / `CANNOT_SELF_*`)
+- ✅ Actividad reciente filtrada por rol: profe solo ve la suya, admin ve la del centro
+- ✅ Página `/dashboard/stats` con datos reales (`monthly`, `weeklyUsage`, `moduleBreakdown`, `teacherStats`, `topTeacher`, `topModule`); sin mocks
+- ✅ `StatCard` con auto-shrink + ellipsis para nombres largos (no se sale del recuadro)
 - ✅ Job semanal `verigood-digest` en PM2 (resumen + inactivos + retención 90d)
 - ✅ Scaffolding de tests: Jest + Vitest + Playwright con ejemplos representativos
 

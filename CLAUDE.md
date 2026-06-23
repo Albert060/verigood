@@ -46,7 +46,8 @@ verigood/
 │       ├── middleware/
 │       │   └── auth.js       # authenticate, authorize, requireModule, requireModuleActive
 │       ├── utils/
-│       │   └── aiAvailable.js # detecta si ANTHROPIC_API_KEY es válida (no placeholder)
+│       │   ├── aiAvailable.js      # detecta si ANTHROPIC_API_KEY es válida (no placeholder)
+│       │   └── stripeAvailable.js  # mismo patrón para STRIPE_SECRET_KEY (sk_*)
 │       ├── controllers/
 │       │   ├── authController.js
 │       │   ├── usersController.js
@@ -161,7 +162,8 @@ verigood/
             ├── auth/                     # LoginPage, RegisterPage
             ├── landing/                  # LandingPage (pública)
             ├── superadmin/               # Dashboard, Organizations, Billing, System
-            ├── institutional/            # Dashboard, Users, Modules, Stats, Billing,
+            ├── institutional/            # Dashboard, Users (CRUD profes), Modules,
+            │                             # Stats, Billing, ManageBilling (/billing/manage),
             │                             # Resources (biblioteca), ResourceDetail
             ├── module/                   # ModuleLayout, ModuleHome (Fase 1),
             │                             # ToolPage, ModuleOcrPage (OCR genérico)
@@ -915,4 +917,7 @@ SSL con Let's Encrypt: `certbot --nginx -d verigood.es -d www.verigood.es`
 - **Facturas**: `renderInvoice` produce PDF con número correlativo, fechas, base imponible, IVA 21%, total, sello PAGADA/PENDIENTE y pie legal RGPD. Si la org tiene `stripe_customer_id` real, se usan facturas oficiales Stripe vía `invoice_pdf`. Si no, fixture backend (6 meses) y, como último fallback, 4 ejemplos precargados en el frontend.
 - **Gestión de suscripción**: el CTA "Gestionar suscripción" en `/dashboard/billing` navega a `/dashboard/billing/manage` (componente `ManageBilling`). Tres bloques: (1) cambio de plan vía `/stripe/checkout`, (2) método de pago vía Customer Portal de Stripe (`/stripe/portal`), (3) cancelación al final del periodo vía `/stripe/subscription/cancel` (también `resume` para revertirla). `stripeAvailable()` (`utils/stripeAvailable.js`) mismo patrón que `aiAvailable()`: detecta clave real (no PLACEHOLDER, prefijo `sk_`). En modo demo la página se muestra con banner y CTAs deshabilitados.
 - **Notificaciones**: `notifyService` es best-effort — si falla (tabla no migrada, etc.) lo registra en logs pero **nunca rompe** el flujo del caller. Polling cada 30s en el frontend; migrar a WebSockets cuando haga falta inmediatez real. Tipos canónicos: ver `TYPES` en `notifyService.js`.
+- **CRUD de profesores**: `PATCH /users/:userId` para editar nombre/rol/`is_active`; `DELETE /users/:userId` para eliminación REAL (no soft delete). Salvaguardas en el controller: `CANNOT_SELF_MUTATE`, `CANNOT_SELF_DELETE`, `LAST_ADMIN` y `HAS_ACTIVITY`. La UI ([Users.jsx](frontend/src/pages/institutional/Users.jsx)) oculta los botones para la propia fila del admin logueado para evitar clics inútiles.
+- **Estadísticas**: `/dashboard/stats` consume **datos reales** de `GET /organizations/:id/stats` (no hay constantes mock). El controller hace 5 queries paralelas a `usage_logs` para `monthly`, `weeklyUsage` (cubos del mes en curso), `moduleBreakdown` (usa `metadata->>'moduleId'` para tools Fase 1), `teacherStats` (clasifica `action_type` en exámenes/correcciones/dinámicas con CASE/LIKE) y nombres del catálogo. Empty state si no hay actividad este mes — nunca números inventados.
+- **StatCard**: `components/ui/index.jsx` aplica `overflow-hidden`, `truncate` con `title` (tooltip nativo) y auto-shrink del `font-size` cuando `mono=false`: 36→28→22px según longitud del string. Beneficia a cualquier StatCard sin tocar callers.
 - **Tests**: scaffolding completo con Jest (backend) + Vitest (frontend) + Playwright (e2e). Los e2e asumen modo demo (sin clave de IA) para no golpear Anthropic en CI. Ejecutar: `npm test`, `npm run test:e2e`.
