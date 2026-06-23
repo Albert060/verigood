@@ -116,7 +116,7 @@ a:hover .hl-underline::after {
 
 /* ── Sidebar ────────────────────────────────────────────────── */
 .sidebar-item {
-  @apply flex items-center gap-3 px-4 py-3 text-[15px] text-marron-soft cursor-pointer
+  @apply flex items-center gap-2.5 px-4 py-1.5 text-[13.5px] leading-snug text-marron-soft cursor-pointer
          border-l-[3px] border-transparent transition-all duration-150
          rounded-r-xl mr-2;
 }

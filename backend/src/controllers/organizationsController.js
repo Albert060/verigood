@@ -91,25 +91,44 @@ const getStats = async (req, res) => {
          FROM users WHERE organization_id = $1`,
         [orgId]
       ),
+      // usageByModule + recentActivity: resolvemos el moduleId real desde
+      // metadata->>'moduleId' (tools Fase 1 escriben aquí el id del catálogo
+      // mientras que `module` queda hardcodeado a 'cambridge' por el enum
+      // legacy). Cuando metadata no lo trae (Cambridge nativo), caemos al
+      // module::text. Después hacemos LEFT JOIN con `modules` para devolver
+      // el nombre legible ("Matemáticas Primaria" en vez de "matematicas_primaria").
       query(
-        `SELECT ul.module, ul.action_type, COUNT(*) as count
-         FROM usage_logs ul
-         WHERE ul.organization_id = $1
-           AND ul.created_at >= NOW() - INTERVAL '30 days'
-           ${ownerFilter}
-         GROUP BY ul.module, ul.action_type
-         ORDER BY count DESC`,
+        `WITH ul_resolved AS (
+           SELECT COALESCE(ul.metadata->>'moduleId', ul.module::text) AS module_id,
+                  ul.action_type
+             FROM usage_logs ul
+            WHERE ul.organization_id = $1
+              AND ul.created_at >= NOW() - INTERVAL '30 days'
+              ${ownerFilter}
+         )
+         SELECT u.module_id,
+                COALESCE(m.name, u.module_id) AS module,
+                u.action_type,
+                COUNT(*) AS count
+           FROM ul_resolved u
+           LEFT JOIN modules m ON m.id = u.module_id
+          GROUP BY u.module_id, m.name, u.action_type
+          ORDER BY count DESC`,
         ownerParams
       ),
       query(
-        `SELECT ul.action_type, ul.module, ul.created_at,
+        `SELECT ul.action_type,
+                COALESCE(ul.metadata->>'moduleId', ul.module::text) AS module_id,
+                COALESCE(m.name, COALESCE(ul.metadata->>'moduleId', ul.module::text)) AS module,
+                ul.created_at,
                 u.name as user_name
-         FROM usage_logs ul
-         JOIN users u ON ul.user_id = u.id
-         WHERE ul.organization_id = $1
-           ${ownerFilter}
-         ORDER BY ul.created_at DESC
-         LIMIT 10`,
+           FROM usage_logs ul
+           JOIN users u ON ul.user_id = u.id
+           LEFT JOIN modules m ON m.id = COALESCE(ul.metadata->>'moduleId', ul.module::text)
+          WHERE ul.organization_id = $1
+            ${ownerFilter}
+          ORDER BY ul.created_at DESC
+          LIMIT 10`,
         ownerParams
       ),
     ]);

@@ -64,11 +64,11 @@ export default function SidebarStage({ stageKey, label, modules }) {
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        className="w-full flex items-center gap-2.5 px-5 pt-5 pb-3 text-[15px] tracking-[0.08em] text-tinta font-display font-semibold hover:text-marino transition-colors"
+        className="w-full flex items-center gap-2.5 px-5 pt-4 pb-2 text-[14px] tracking-[0.08em] text-tinta font-display font-semibold hover:text-marino transition-colors"
       >
-        <span className="text-[13px] inline-block w-3 text-marron-soft">{open ? '▾' : '▸'}</span>
+        <span className="text-[12px] inline-block w-3 text-marron-soft">{open ? '▾' : '▸'}</span>
         <span>{label}</span>
-        <span className="ml-auto font-mono text-[12px] text-marron-soft opacity-70 border border-linea px-1.5 py-0.5">
+        <span className="ml-auto font-mono text-[10.5px] text-marron-soft opacity-70 border border-linea px-1.5 py-0">
           {modules.length}
         </span>
       </button>
@@ -81,7 +81,7 @@ export default function SidebarStage({ stageKey, label, modules }) {
               to={m.route_prefix}
               className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}
             >
-              <span className="text-[18px] w-5 flex items-center justify-center flex-shrink-0">
+              <span className="text-[15px] w-4 flex items-center justify-center flex-shrink-0">
                 {glyph(m.icon)}
               </span>
               <span className="flex-1">{m.name}</span>
