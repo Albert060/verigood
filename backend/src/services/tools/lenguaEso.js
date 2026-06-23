@@ -1,4 +1,5 @@
 const { callClaude, callClaudeJSON } = require('../claudeService');
+const { withCuratedBank } = require('../hybridGeneratorService');
 
 const SYSTEM =
   'Eres profesor de Lengua castellana y literatura en un IES español, con criterio LOMLOE. ' +
@@ -9,30 +10,34 @@ const SYSTEM =
 exports.exercises = async (input, ctx) => {
   const { course, focus, count = 12 } = input;
 
-  const messages = `Genera ${count} ejercicios de Lengua sobre "${focus}" para alumnos de ${course}.
+  const output = await withCuratedBank({
+    moduleId: ctx.moduleId,
+    input, count, topic: focus, course,
+    mapSeed: (row) => ({
+      type: row.type || 'fill_in',
+      prompt: row.question,
+      options: row.options || undefined,
+      answer: row.answer,
+    }),
+    buildOutput: async ({ remaining }) => {
+      const messages = `Genera ${remaining} ejercicios de Lengua sobre "${focus}" para alumnos de ${course}.
 
-Devuelve JSON estricto con este formato:
+Devuelve JSON estricto:
 {
   "title": "Ejercicios: ${focus}",
   "topic": "${focus}",
   "course": "${course}",
   "exercises": [
-    {
-      "id": 1,
-      "type": "fill_in" | "transform" | "identify" | "multiple_choice" | "open",
-      "prompt": "enunciado claro",
-      "options": ["A","B","C","D"],
-      "answer": "respuesta modelo o esquema de respuesta"
-    }
+    { "type": "fill_in"|"transform"|"identify"|"multiple_choice"|"open",
+      "prompt": "...", "options": ["A","B","C","D"], "answer": "..." }
   ]
 }
 
-Mezcla tipos. Frases verosímiles y de cierta complejidad sintáctica (apropiada al curso). Para preguntas abiertas, "answer" es un esquema, no texto cerrado. Todo en español de España.`;
-
-  const result = await callClaudeJSON({
-    system: SYSTEM, messages, model: 'haiku', maxTokens: 2600,
+Mezcla tipos. Frases verosímiles, complejidad sintáctica apropiada al curso. En preguntas abiertas, "answer" es un esquema. Todo en español de España.`;
+      return callClaudeJSON({ system: SYSTEM, messages, model: 'haiku', maxTokens: 2600 });
+    },
   });
-  return { output_kind: 'exercise_set', output: result };
+  return { output_kind: 'exercise_set', output };
 };
 
 // len_eso.syntax — text

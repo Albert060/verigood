@@ -1,4 +1,5 @@
 const { callClaude, callClaudeJSON } = require('../claudeService');
+const { withCuratedBank } = require('../hybridGeneratorService');
 
 const SYSTEM =
   'Eres profesor de Geografía e Historia en un IES español, con criterio LOMLOE. ' +
@@ -54,31 +55,43 @@ Los hitos deben estar ordenados cronológicamente y elegidos por su relevancia, 
   return { output_kind: 'timeline', output: result };
 };
 
-// geh.quiz — quiz
+// geh.quiz — quiz (itemsKey 'questions')
 exports.quiz = async (input, ctx) => {
   const { topic, question_count = 10, course } = input;
 
-  const messages = `Genera un cuestionario tipo test sobre "${topic}" con ${question_count} preguntas, para alumnos de ${course}.
+  // Para quiz necesitamos mapear correct_index. Si la BD trae options + answer
+  // textual, buscamos el índice de la respuesta dentro de options.
+  const findCorrectIndex = (opts, ans) => {
+    if (!Array.isArray(opts) || !ans) return 0;
+    const i = opts.findIndex((o) => String(o).trim().toLowerCase() === String(ans).trim().toLowerCase());
+    return i >= 0 ? i : 0;
+  };
 
-Devuelve JSON estricto con este formato:
+  const output = await withCuratedBank({
+    moduleId: ctx.moduleId,
+    input, count: question_count, topic, course,
+    itemsKey: 'questions',
+    mapSeed: (row) => ({
+      question: row.question,
+      options: row.options || [],
+      correct_index: findCorrectIndex(row.options, row.answer),
+      explanation: row.explanation || undefined,
+    }),
+    buildOutput: async ({ remaining }) => {
+      const messages = `Genera un cuestionario tipo test sobre "${topic}" con ${remaining} preguntas, para alumnos de ${course}.
+
+Devuelve JSON estricto:
 {
   "title": "string en español",
   "topic": "${topic}",
   "questions": [
-    {
-      "id": 1,
-      "question": "enunciado en español",
-      "options": ["A","B","C","D"],
-      "correct_index": 0,
-      "explanation": "justificación breve"
-    }
+    { "question": "...", "options": ["A","B","C","D"], "correct_index": 0, "explanation": "..." }
   ]
 }
 
-4 opciones por pregunta. Mezcla preguntas de hechos, causas, consecuencias y comparativas. Las opciones incorrectas deben ser verosímiles. Todo en español de España.`;
-
-  const result = await callClaudeJSON({
-    system: SYSTEM, messages, model: 'haiku', maxTokens: 2500,
+4 opciones por pregunta. Mezcla hechos, causas, consecuencias y comparativas. Distractores plausibles. Todo en español de España.`;
+      return callClaudeJSON({ system: SYSTEM, messages, model: 'haiku', maxTokens: 2500 });
+    },
   });
-  return { output_kind: 'quiz', output: result };
+  return { output_kind: 'quiz', output };
 };

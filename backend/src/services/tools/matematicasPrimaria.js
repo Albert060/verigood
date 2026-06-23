@@ -1,71 +1,77 @@
 const { callClaude, callClaudeJSON } = require('../claudeService');
+const { withCuratedBank } = require('../hybridGeneratorService');
 
 const SYSTEM =
   'Eres profesor de Matemáticas en Primaria, en un colegio español, con criterio LOMLOE. ' +
   'Escribes en español de España, con vocabulario adaptado a la edad del alumno. ' +
   'Tus problemas son verosímiles y cercanos a su realidad. Nada de relleno, nada de emojis.';
 
-const COURSES = ['1º Primaria','2º Primaria','3º Primaria','4º Primaria','5º Primaria','6º Primaria'];
-
 // mat_prim.problems — exercise_set
 exports.problems = async (input, ctx) => {
   const { course, topic, count = 6 } = input;
 
-  const messages = `Genera ${count} problemas matemáticos verbalizados sobre "${topic}" para alumnos de ${course}.
+  const output = await withCuratedBank({
+    moduleId: ctx.moduleId,
+    input, count, topic, course,
+    mapSeed: (row) => ({
+      type: row.type || 'problem',
+      prompt: row.question,
+      answer: row.answer,
+      explanation: row.explanation || undefined,
+    }),
+    buildOutput: async ({ remaining }) => {
+      const messages = `Genera ${remaining} problemas matemáticos verbalizados sobre "${topic}" para alumnos de ${course}.
 
-Devuelve JSON estricto con este formato:
+Devuelve JSON estricto:
 {
   "title": "Problemas: ${topic}",
   "topic": "${topic}",
   "course": "${course}",
   "exercises": [
     {
-      "id": 1,
       "type": "problem",
-      "prompt": "enunciado del problema, contextualizado en la vida cotidiana del niño",
-      "data": "datos extraídos del enunciado (lista)",
-      "unknown": "qué se pide",
-      "solution_steps": [
-        "Paso 1: qué entiendo del problema",
-        "Paso 2: qué operación elijo y por qué",
-        "Paso 3: planteamiento numérico",
-        "Paso 4: resultado con unidades y comprobación"
-      ],
-      "answer": "respuesta final con unidades"
+      "prompt": "enunciado contextualizado",
+      "solution_steps": ["Paso 1: ...", "Paso 2: ..."],
+      "answer": "respuesta con unidades"
     }
   ]
 }
 
-Adapta números y operaciones al curso. Para 1º-2º usa cifras pequeñas; para 5º-6º incluye decimales o fracciones si encaja con el tema. Todo en español de España.`;
-
-  const result = await callClaudeJSON({
-    system: SYSTEM, messages, model: 'haiku', maxTokens: 2800,
+Adapta números y operaciones al curso. Para 1º-2º cifras pequeñas; 5º-6º decimales/fracciones si encaja. Todo en español de España.`;
+      return callClaudeJSON({ system: SYSTEM, messages, model: 'haiku', maxTokens: 2800 });
+    },
   });
-  return { output_kind: 'exercise_set', output: result };
+  return { output_kind: 'exercise_set', output };
 };
 
 // mat_prim.series — exercise_set
 exports.series = async (input, ctx) => {
   const { course, skill, count = 15 } = input;
 
-  const messages = `Genera una serie de ${count} ejercicios de cálculo para practicar "${skill}" en ${course}.
+  const output = await withCuratedBank({
+    moduleId: ctx.moduleId,
+    input, count, topic: skill, course,
+    mapSeed: (row) => ({
+      type: row.type || 'calculation',
+      prompt: row.question,
+      answer: row.answer,
+    }),
+    buildOutput: async ({ remaining }) => {
+      const messages = `Genera una serie de ${remaining} ejercicios de cálculo para practicar "${skill}" en ${course}.
 
-Devuelve JSON estricto con este formato:
+Devuelve JSON estricto:
 {
   "title": "Serie: ${skill}",
   "topic": "${skill}",
   "course": "${course}",
-  "exercises": [
-    { "id": 1, "type": "calculation", "prompt": "ejercicio de cálculo (notación matemática clara)", "answer": "resultado" }
-  ]
+  "exercises": [ { "type": "calculation", "prompt": "...", "answer": "..." } ]
 }
 
-Dificultad gradual de menor a mayor dentro de la serie. Sin enunciados verbalizados, sólo cálculo. Todo en español de España.`;
-
-  const result = await callClaudeJSON({
-    system: SYSTEM, messages, model: 'haiku', maxTokens: 2200,
+Dificultad gradual. Sin enunciados verbalizados, solo cálculo. Todo en español de España.`;
+      return callClaudeJSON({ system: SYSTEM, messages, model: 'haiku', maxTokens: 2200 });
+    },
   });
-  return { output_kind: 'exercise_set', output: result };
+  return { output_kind: 'exercise_set', output };
 };
 
 // mat_prim.manipulative — text

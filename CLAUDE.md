@@ -82,6 +82,7 @@ verigood/
 │       │   ├── aiErrorThrottle.js             # contador en memoria → 1 alerta al admin tras N errores IA
 │       │   ├── quotaService.js                # comprueba 50/80/100% del límite mensual de tokens
 │       │   ├── digestService.js               # resumen semanal + profes inactivos + retención
+│       │   ├── hybridGeneratorService.js      # patrón BD+IA reutilizable (withCuratedBank / fetchSeeds)
 │       │   ├── dynamicsService.js
 │       │   ├── presentationsService.js
 │       │   ├── lenguaService.js              # legacy
@@ -118,12 +119,14 @@ verigood/
 │       │   ├── 004_library_items.sql         # tabla library_items (biblioteca unificada)
 │       │   ├── 005_notifications.sql         # tabla notifications (in-app)
 │       │   ├── 006_user_modules.sql          # pivote user_modules — asignación profe ↔ módulo
-│       │   └── 007_notifications_indices.sql # índices anti-spam + retención
+│       │   ├── 007_notifications_indices.sql # índices anti-spam + retención
+│       │   └── 008_exam_questions_module_id.sql # exam_questions soporta el catálogo Fase 1
 │       ├── jobs/
 │       │   └── weeklyDigest.js               # cron PM2 — resumen semanal + profes inactivos + purge
 │       └── seeds/
 │           ├── 001_modules_catalog.sql       # SISTEMA — catálogo cerrado de módulos
 │           ├── 002_module_tools.sql          # SISTEMA — 56 tools + bindings
+│           ├── 003_exam_questions_by_module.sql # SISTEMA — banco curado por módulo (hybridGenerator)
 │           └── dev_demo_data.sql             # DEMO — admin@verigood.com / demo1234
 │
 └── frontend/
@@ -332,6 +335,63 @@ Cada uno tiene:
 3. **Renderer (opcional)** — solo si el `output_kind` no existe aún. Si reusas uno, NO hay que tocar nada.
 
 `consistencyCheck.js` avisa al arranque si hay discrepancia BD ↔ código.
+
+---
+
+## Banco curado de preguntas (patrón híbrido BD + IA)
+
+Inspirado en Cambridge, extendido al catálogo Fase 1. Cualquier tool que genere `exercise_set` o `quiz` puede tirar de un **banco curado por módulo** en `exam_questions`. Si la BD cubre parte, lo demás lo completa Claude.
+
+### Esquema
+
+`exam_questions` ([migración 008](backend/src/migrations/008_exam_questions_module_id.sql)) tiene una columna `module_id VARCHAR(50) REFERENCES modules(id)` alineada con el catálogo. El enum legacy `module` queda como nullable para compat con filas históricas. Índices: `(module_id, level)` y `(module_id, topic)` con WHERE `is_active`.
+
+### Servicio reutilizable
+
+`services/hybridGeneratorService.js` expone `withCuratedBank(opts)`:
+
+```js
+const { withCuratedBank } = require('../hybridGeneratorService');
+
+exports.problems = async (input, ctx) => {
+  const output = await withCuratedBank({
+    moduleId: ctx.moduleId,              // del dispatcher
+    input, count, topic, course,
+    mapSeed: (row) => ({                 // row exam_questions → item handler-shape
+      type: row.type, prompt: row.question, answer: row.answer,
+    }),
+    buildOutput: async ({ remaining }) => {
+      // El handler construye SU prompt original pero pidiendo `remaining`
+      // en vez de `count`. Devuelve el mismo JSON que devolvería sin BD.
+      return callClaudeJSON({ system, messages: `...${remaining}...`, model, maxTokens });
+    },
+    itemsKey: 'exercises',               // 'questions' para output_kind 'quiz'
+  });
+  return { output_kind: 'exercise_set', output };
+};
+```
+
+El servicio:
+1. Lee hasta `floor(count * 0.5)` filas de `exam_questions WHERE module_id=$1 AND level ILIKE %course% AND topic ILIKE %topic%`.
+2. Si la BD ya cubre el total, evita el call a Claude y devuelve solo seeds.
+3. Si no, llama a `buildOutput({ remaining })` y fusiona: seeds primero (source `'database'`), IA después (source `'ai'`).
+4. Devuelve el output original del handler con `dbCount` y `aiCount` añadidos para trazabilidad.
+
+### Handlers que usan el patrón
+
+15 handlers de `output_kind` en `'exercise_set' | 'quiz'`:
+
+`ingles.exercises`, `ingles.reading`, `byg.exam`, `fyq.problems`, `mat_prim.problems`, `mat_prim.series`, `len_prim.exercises`, `len_prim.reading`, `len_eso.exercises`, `mat_eso.problems`, `mat_eso.exercises`, `mat_eso.exam`, `tec_eso.exercises`, `geh.quiz`, `med_prim.quiz`.
+
+Cambridge mantiene su `examGeneratorService` propio (output shape distinto: `questions[]` en vez de `exercises[]`). También actualizado para filtrar por `module_id = 'cambridge'`.
+
+### Seeds curados
+
+`seeds/003_exam_questions_by_module.sql` siembra 3-5 preguntas por módulo (~40 totales) como demo realista. Es seed de SISTEMA, idempotente (NOT EXISTS sobre (module_id, question)). El contenido pedagógico real se amplía con SQL directo o desde el panel cuando se cree.
+
+### Modo demo
+
+Si `aiAvailable() === false` y el banco cubre el total, el output sale 100% BD. Si el banco no cubre, el dispatcher cortocircuita con `demoFixtures.forKind(...)` ANTES de llegar al handler (ver § Modo demo).
 
 ---
 
@@ -745,10 +805,12 @@ psql $DATABASE_URL -f backend/src/migrations/004_library_items.sql
 psql $DATABASE_URL -f backend/src/migrations/005_notifications.sql
 psql $DATABASE_URL -f backend/src/migrations/006_user_modules.sql
 psql $DATABASE_URL -f backend/src/migrations/007_notifications_indices.sql
+psql $DATABASE_URL -f backend/src/migrations/008_exam_questions_module_id.sql
 
 # Seeds de SISTEMA (idempotentes, ON CONFLICT)
 psql $DATABASE_URL -f backend/src/seeds/001_modules_catalog.sql   # 23 módulos
 psql $DATABASE_URL -f backend/src/seeds/002_module_tools.sql      # 56 tools + bindings
+psql $DATABASE_URL -f backend/src/seeds/003_exam_questions_by_module.sql  # banco curado por módulo
 
 # Seed de DEMO (solo dev)
 psql $DATABASE_URL -f backend/src/seeds/dev_demo_data.sql

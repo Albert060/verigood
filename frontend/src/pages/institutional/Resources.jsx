@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { cambridgeApi, libraryApi, pdfApi, modulesApi } from '../../services/api';
-import { PageHeader, SectionLabel } from '../../components/ui';
+import { PageHeader, SectionLabel, Button } from '../../components/ui';
 
 const KIND_LABELS = {
   exam:         'Examen',
@@ -159,7 +159,16 @@ export default function InstitutionalResources() {
 
   return (
     <div className="animate-slide-in">
-      <PageHeader title="Biblioteca" subtitle="RECURSOS GUARDADOS · PDF DESCARGABLE" romanNum="§ IV" />
+      <PageHeader
+        title="Biblioteca"
+        subtitle="RECURSOS GUARDADOS · PDF DESCARGABLE"
+        romanNum="§ IV"
+        actions={
+          <Button variant="ghost" onClick={() => navigate('/dashboard')}>
+            ← Volver al Dashboard
+          </Button>
+        }
+      />
 
       <div className="flex items-center gap-3 mb-4">
         <input

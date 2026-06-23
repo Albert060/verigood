@@ -109,6 +109,7 @@ verigood/
 │       │   ├── aiErrorThrottle.js        # alerta admin tras N errores IA en 15 min
 │       │   ├── quotaService.js           # avisos 50/80/100% del límite mensual
 │       │   ├── digestService.js          # resumen semanal + inactivos + retención
+│       │   ├── hybridGeneratorService.js  # patrón BD+IA reutilizable (withCuratedBank)
 │       │   └── tools/
 │       │       ├── index.js              # registro central
 │       │       ├── demoFixtures.js       # fixtures por output_kind
@@ -121,12 +122,14 @@ verigood/
 │       │   ├── 004_library_items.sql
 │       │   ├── 005_notifications.sql
 │       │   ├── 006_user_modules.sql           # pivote profesor ↔ módulo
-│       │   └── 007_notifications_indices.sql  # anti-spam + retención
+│       │   ├── 007_notifications_indices.sql  # anti-spam + retención
+│       │   └── 008_exam_questions_module_id.sql # exam_questions multi-módulo
 │       ├── jobs/
 │       │   └── weeklyDigest.js                # cron PM2 (lunes 08:00)
 │       └── seeds/
 │           ├── 001_modules_catalog.sql   # 23 módulos
 │           ├── 002_module_tools.sql      # 56 tools + bindings
+│           ├── 003_exam_questions_by_module.sql  # banco curado por módulo (~40 preguntas)
 │           └── dev_demo_data.sql
 │
 ├── frontend/
@@ -261,6 +264,55 @@ Cada uno tiene renderer frontend + renderer PDF + fixture demo. Añadir un kind 
 3. **Renderer** — solo si es un `output_kind` nuevo
 
 Sin migraciones, sin tocar el dispatcher.
+
+---
+
+## Banco curado de preguntas (BD + IA)
+
+Patrón híbrido inspirado en Cambridge y extendido al catálogo Fase 1. Cualquier tool de `output_kind` `exercise_set` o `quiz` puede tirar de un banco curado por módulo en `exam_questions`. Si la BD cubre parte, lo demás lo completa Claude — y cada ítem queda marcado con `source: 'database' | 'ai'` para trazabilidad.
+
+### Esquema multi-módulo
+
+[Migración 008](backend/src/migrations/008_exam_questions_module_id.sql) añade `module_id VARCHAR(50) REFERENCES modules(id)` a `exam_questions` y deja el enum legacy `module` como nullable. Cualquier ID del catálogo (`matematicas_eso`, `ingles_primaria`, `bio_geo_eso`, …) ya es válido como clave de banco. Cambridge sigue siendo `module_id = 'cambridge'`.
+
+### `withCuratedBank` — wrapper para handlers
+
+Cada handler decide su prompt y su shape. El servicio [hybridGeneratorService.js](backend/src/services/hybridGeneratorService.js) se encarga del 60% del trabajo:
+
+```js
+const { withCuratedBank } = require('../hybridGeneratorService');
+
+exports.problems = async (input, ctx) => {
+  const { topic, count, course } = input;
+  const output = await withCuratedBank({
+    moduleId: ctx.moduleId,
+    input, count, topic, course,
+    mapSeed: (row) => ({ type: row.type, prompt: row.question, answer: row.answer }),
+    buildOutput: async ({ remaining }) =>
+      callClaudeJSON({ system, messages: `Genera ${remaining}...`, model, maxTokens }),
+    itemsKey: 'exercises', // o 'questions' para output_kind quiz
+  });
+  return { output_kind: 'exercise_set', output };
+};
+```
+
+El servicio:
+1. Lee hasta `floor(count * 0.5)` filas filtradas por `module_id`, `level ILIKE %course%`, `topic ILIKE %topic%`.
+2. Si el banco cubre el total, evita el call a Claude.
+3. Si no, pide a la IA solo `remaining` items y fusiona (seeds primero, IA después).
+4. Devuelve el output original del handler enriquecido con `dbCount` y `aiCount`.
+
+### Handlers conectados
+
+15 tools (output_kind `exercise_set` / `quiz`) ya enrutan vía `withCuratedBank`:
+
+`ingles.exercises` · `ingles.reading` · `byg.exam` · `fyq.problems` · `mat_prim.problems` · `mat_prim.series` · `len_prim.exercises` · `len_prim.reading` · `len_eso.exercises` · `mat_eso.problems` · `mat_eso.exercises` · `mat_eso.exam` · `tec_eso.exercises` · `geh.quiz` · `med_prim.quiz`.
+
+El resto de handlers (`text`, `rubric`, `timeline`, `commentary`) no necesitan banco — el input ya da contexto suficiente.
+
+### Seeds
+
+[`003_exam_questions_by_module.sql`](backend/src/seeds/003_exam_questions_by_module.sql) siembra ~40 preguntas curadas (3-5 por módulo Fase 1) como demo realista. Es seed de SISTEMA, idempotente (NOT EXISTS sobre `(module_id, question)`). El contenido real se amplía con SQL directo o desde un panel interno futuro.
 
 ---
 
@@ -581,8 +633,10 @@ psql verigood_local < backend/src/migrations/004_library_items.sql
 psql verigood_local < backend/src/migrations/005_notifications.sql
 psql verigood_local < backend/src/migrations/006_user_modules.sql
 psql verigood_local < backend/src/migrations/007_notifications_indices.sql
+psql verigood_local < backend/src/migrations/008_exam_questions_module_id.sql
 psql verigood_local < backend/src/seeds/001_modules_catalog.sql   # SISTEMA
 psql verigood_local < backend/src/seeds/002_module_tools.sql      # SISTEMA — 56 tools
+psql verigood_local < backend/src/seeds/003_exam_questions_by_module.sql  # SISTEMA — banco curado por módulo
 psql verigood_local < backend/src/seeds/dev_demo_data.sql         # DEMO
 
 # 3. Entorno
@@ -838,6 +892,7 @@ Ver `agentes/README.md` para el detalle de cada rol y cuándo saltar pasos.
 - ✅ Página `/dashboard/stats` con datos reales (`monthly`, `weeklyUsage`, `moduleBreakdown`, `teacherStats`, `topTeacher`, `topModule`); sin mocks
 - ✅ `StatCard` con auto-shrink + ellipsis para nombres largos (no se sale del recuadro)
 - ✅ Job semanal `verigood-digest` en PM2 (resumen + inactivos + retención 90d)
+- ✅ Patrón híbrido BD+IA extendido a todos los módulos: `hybridGeneratorService.withCuratedBank` conecta 15 handlers de exercise_set/quiz con `exam_questions.module_id` (mig 008) + seed ~40 preguntas curadas (`003_exam_questions_by_module.sql`)
 - ✅ Scaffolding de tests: Jest + Vitest + Playwright con ejemplos representativos
 
 **En curso / próximos pasos:**

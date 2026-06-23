@@ -1,4 +1,5 @@
 const { callClaude, callClaudeJSON } = require('../claudeService');
+const { withCuratedBank } = require('../hybridGeneratorService');
 
 const SYSTEM =
   'Eres maestro de Conocimiento del medio natural, social y cultural en Primaria, en un colegio español, ' +
@@ -25,34 +26,44 @@ Devuelve un texto en español de España estructurado con:
   return { output_kind: 'text', output: text };
 };
 
-// med_prim.quiz — quiz
+// med_prim.quiz — quiz (itemsKey 'questions')
 exports.quiz = async (input, ctx) => {
   const { course, topic, question_count = 10 } = input;
 
-  const messages = `Genera un cuestionario tipo test sobre "${topic}" para alumnos de ${course}.
+  const findCorrectIndex = (opts, ans) => {
+    if (!Array.isArray(opts) || !ans) return 0;
+    const i = opts.findIndex((o) => String(o).trim().toLowerCase() === String(ans).trim().toLowerCase());
+    return i >= 0 ? i : 0;
+  };
 
-Devuelve JSON estricto con este formato:
+  const output = await withCuratedBank({
+    moduleId: ctx.moduleId,
+    input, count: question_count, topic, course,
+    itemsKey: 'questions',
+    mapSeed: (row) => ({
+      prompt: row.question,
+      options: row.options || [],
+      correct_index: findCorrectIndex(row.options, row.answer),
+      explanation: row.explanation || undefined,
+    }),
+    buildOutput: async ({ remaining }) => {
+      const messages = `Genera un cuestionario tipo test sobre "${topic}" para alumnos de ${course}.
+
+Devuelve JSON estricto:
 {
   "title": "Cuestionario: ${topic}",
   "topic": "${topic}",
   "course": "${course}",
   "questions": [
-    {
-      "id": 1,
-      "prompt": "pregunta clara",
-      "options": ["A","B","C","D"],
-      "correct_index": 0,
-      "explanation": "explicación breve de por qué es correcta"
-    }
+    { "prompt": "...", "options": ["A","B","C","D"], "correct_index": 0, "explanation": "..." }
   ]
 }
 
-Genera ${question_count} preguntas con 4 opciones cada una. Los distractores deben ser plausibles, no absurdos. Vocabulario adaptado al curso. Todo en español de España.`;
-
-  const result = await callClaudeJSON({
-    system: SYSTEM, messages, model: 'haiku', maxTokens: 2600,
+Genera ${remaining} preguntas con 4 opciones. Distractores plausibles. Vocabulario adaptado al curso. Todo en español de España.`;
+      return callClaudeJSON({ system: SYSTEM, messages, model: 'haiku', maxTokens: 2600 });
+    },
   });
-  return { output_kind: 'quiz', output: result };
+  return { output_kind: 'quiz', output };
 };
 
 // med_prim.experiments — text

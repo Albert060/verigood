@@ -1,4 +1,5 @@
 const { callClaude, callClaudeJSON } = require('../claudeService');
+const { withCuratedBank } = require('../hybridGeneratorService');
 
 const SYSTEM =
   'Eres profesor de Tecnología y Digitalización en un IES español, con criterio LOMLOE. ' +
@@ -33,30 +34,34 @@ Devuelve un texto en español de España estructurado con:
 exports.exercises = async (input, ctx) => {
   const { course, topic, count = 10 } = input;
 
-  const messages = `Genera ${count} ejercicios técnicos sobre "${topic}" para alumnos de ${course}.
+  const output = await withCuratedBank({
+    moduleId: ctx.moduleId,
+    input, count, topic, course,
+    mapSeed: (row) => ({
+      type: row.type || 'multiple_choice',
+      prompt: row.question,
+      options: row.options || undefined,
+      answer: row.answer,
+    }),
+    buildOutput: async ({ remaining }) => {
+      const messages = `Genera ${remaining} ejercicios técnicos sobre "${topic}" para alumnos de ${course}.
 
-Devuelve JSON estricto con este formato:
+Devuelve JSON estricto:
 {
   "title": "Ejercicios: ${topic}",
   "topic": "${topic}",
   "course": "${course}",
   "exercises": [
-    {
-      "id": 1,
-      "type": "calculation" | "design" | "identify" | "multiple_choice" | "code",
-      "prompt": "enunciado claro (incluye datos, esquema o fragmento de código si aplica)",
-      "options": ["A","B","C","D"],
-      "answer": "respuesta modelo paso a paso"
-    }
+    { "type": "calculation"|"design"|"identify"|"multiple_choice"|"code",
+      "prompt": "...", "options": ["A","B","C","D"], "answer": "..." }
   ]
 }
 
-Mezcla tipos. Adapta números, esquemas o snippets al nivel del curso. Todo en español de España.`;
-
-  const result = await callClaudeJSON({
-    system: SYSTEM, messages, model: 'haiku', maxTokens: 2600,
+Mezcla tipos. Adapta al curso. Todo en español de España.`;
+      return callClaudeJSON({ system: SYSTEM, messages, model: 'haiku', maxTokens: 2600 });
+    },
   });
-  return { output_kind: 'exercise_set', output: result };
+  return { output_kind: 'exercise_set', output };
 };
 
 // tec_eso.digital — text

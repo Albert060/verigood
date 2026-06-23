@@ -1,4 +1,5 @@
 const { callClaude, callClaudeJSON } = require('../claudeService');
+const { withCuratedBank } = require('../hybridGeneratorService');
 
 const SYSTEM =
   'Eres profesor de Biología y Geología en un IES español, con criterio LOMLOE. ' +
@@ -71,28 +72,34 @@ exports.exam = async (input, ctx) => {
   const { topic, types, count = 10, course } = input;
   const typeHint = TYPE_HINT[types] || types;
 
-  const messages = `Genera ${count} preguntas de examen sobre "${topic}" para alumnos de ${course}. Tipo: ${typeHint}.
+  const output = await withCuratedBank({
+    moduleId: ctx.moduleId,
+    input, count, topic, course,
+    mapSeed: (row) => ({
+      type: row.type || 'open',
+      prompt: row.question,
+      options: row.options || undefined,
+      answer: row.answer,
+      explanation: row.explanation || undefined,
+      points: row.points || 1,
+    }),
+    buildOutput: async ({ remaining }) => {
+      const messages = `Genera ${remaining} preguntas de examen sobre "${topic}" para alumnos de ${course}. Tipo: ${typeHint}.
 
-Devuelve JSON estricto con este formato:
+Devuelve JSON estricto:
 {
   "title": "Examen: ${topic}",
   "topic": "${topic}",
   "exercises": [
-    {
-      "id": 1,
-      "type": "multiple_choice" | "open" | "essay",
-      "prompt": "enunciado de la pregunta en español",
-      "options": ["A","B","C","D"],   // sólo en multiple_choice
-      "answer": "respuesta modelo (breve si es open/multiple_choice, esquema de respuesta si es essay)",
-      "points": número de puntos sobre 10 que vale la pregunta
-    }
+    { "type": "multiple_choice"|"open"|"essay",
+      "prompt": "...", "options": ["A","B","C","D"], "answer": "...",
+      "points": número }
   ]
 }
 
-Las preguntas multiple_choice deben tener distractores plausibles. Para essay, la "answer" es una rúbrica/esquema, no un texto cerrado. Todo en español de España.`;
-
-  const result = await callClaudeJSON({
-    system: SYSTEM, messages, model: 'haiku', maxTokens: 2800,
+Distractores plausibles. En essay, "answer" es rúbrica/esquema. Todo en español de España.`;
+      return callClaudeJSON({ system: SYSTEM, messages, model: 'haiku', maxTokens: 2800 });
+    },
   });
-  return { output_kind: 'exercise_set', output: result };
+  return { output_kind: 'exercise_set', output };
 };

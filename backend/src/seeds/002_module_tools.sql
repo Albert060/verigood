@@ -18,7 +18,7 @@ INSERT INTO module_tools (key, name, description, output_kind, input_schema, sor
    'Baterías de ejercicios de gramática o vocabulario con clave de respuestas.',
    'exercise_set',
    '{"fields":[
-      {"key":"level","label":"Nivel","type":"select","options":["A1","A2","B1","B2"],"required":true},
+      {"key":"level","label":"Curso","type":"select","options":["1º Primaria","2º Primaria","3º Primaria","4º Primaria","5º Primaria","6º Primaria","1º ESO","2º ESO","3º ESO","4º ESO"],"required":true},
       {"key":"topic","label":"Tema","type":"text","placeholder":"Past simple, family vocabulary…","required":true},
       {"key":"count","label":"Nº de ejercicios","type":"number","min":5,"max":30,"default":10}
     ]}'::jsonb,
@@ -29,7 +29,7 @@ INSERT INTO module_tools (key, name, description, output_kind, input_schema, sor
    'Propuestas de redacción guiadas o corrección de un texto del alumno.',
    'text',
    '{"fields":[
-      {"key":"level","label":"Nivel","type":"select","options":["A1","A2","B1","B2"],"required":true},
+      {"key":"level","label":"Curso","type":"select","options":["1º Primaria","2º Primaria","3º Primaria","4º Primaria","5º Primaria","6º Primaria","1º ESO","2º ESO","3º ESO","4º ESO"],"required":true},
       {"key":"mode","label":"Modo","type":"select","options":["propose","correct"],"required":true},
       {"key":"prompt_or_text","label":"Tema o texto","type":"textarea","required":true}
     ]}'::jsonb,
@@ -40,7 +40,7 @@ INSERT INTO module_tools (key, name, description, output_kind, input_schema, sor
    'Texto adaptado al nivel + preguntas con clave.',
    'exercise_set',
    '{"fields":[
-      {"key":"level","label":"Nivel","type":"select","options":["A1","A2","B1","B2"],"required":true},
+      {"key":"level","label":"Curso","type":"select","options":["1º Primaria","2º Primaria","3º Primaria","4º Primaria","5º Primaria","6º Primaria","1º ESO","2º ESO","3º ESO","4º ESO"],"required":true},
       {"key":"topic","label":"Temática","type":"text","required":false},
       {"key":"question_count","label":"Preguntas","type":"number","min":4,"max":15,"default":8}
     ]}'::jsonb,

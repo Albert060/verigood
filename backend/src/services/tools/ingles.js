@@ -1,4 +1,5 @@
 const { callClaude, callClaudeJSON } = require('../claudeService');
+const { withCuratedBank } = require('../hybridGeneratorService');
 
 const STAGE_AUDIENCE = {
   ingles_primaria: 'alumnos de Educación Primaria (6-12 años) en un colegio español',
@@ -55,31 +56,37 @@ exports.exercises = async (input, ctx) => {
   const { level, topic, count = 10 } = input;
   const audience = audienceFor(ctx.moduleId);
 
-  const messages = `Genera ${count} ejercicios de inglés para ${audience}, nivel ${level}, sobre el tema "${topic}".
+  const output = await withCuratedBank({
+    moduleId: ctx.moduleId,
+    input, count, topic, course: level,
+    mapSeed: (row) => ({
+      type: row.type || 'multiple_choice',
+      prompt: row.question,
+      options: row.options || undefined,
+      answer: row.answer,
+      explanation: row.explanation || undefined,
+    }),
+    buildOutput: async ({ remaining }) => {
+      const messages = `Genera ${remaining} ejercicios de inglés para ${audience}, nivel ${level}, sobre "${topic}".
 
-Devuelve JSON estricto con este formato:
+Devuelve JSON estricto:
 {
   "title": "string en español",
   "level": "${level}",
   "topic": "${topic}",
   "exercises": [
-    {
-      "id": 1,
-      "type": "fill_blank" | "multiple_choice" | "transform" | "matching",
-      "prompt": "enunciado en inglés",
-      "options": ["A","B","C","D"],   // sólo en multiple_choice/matching
-      "answer": "respuesta correcta",
-      "explanation": "explicación breve en español"
-    }
+    { "type": "fill_blank"|"multiple_choice"|"transform"|"matching",
+      "prompt": "...en inglés...",
+      "options": ["A","B","C","D"], "answer": "...",
+      "explanation": "explicación en español" }
   ]
 }
 
-Varía los tipos. Las opciones de multiple_choice deben ser plausibles (no chistosas).`;
-
-  const result = await callClaudeJSON({
-    system: JSON_SYSTEM, messages, model: 'haiku', maxTokens: 2500,
+Varía los tipos. Distractores plausibles.`;
+      return callClaudeJSON({ system: JSON_SYSTEM, messages, model: 'haiku', maxTokens: 2500 });
+    },
   });
-  return { output_kind: 'exercise_set', output: result };
+  return { output_kind: 'exercise_set', output };
 };
 
 // ingles.reading — exercise_set (texto + preguntas)
@@ -87,29 +94,34 @@ exports.reading = async (input, ctx) => {
   const { level, topic, question_count = 8 } = input;
   const audience = audienceFor(ctx.moduleId);
 
-  const messages = `Crea una actividad de comprensión lectora para ${audience}, nivel ${level}${topic ? `, temática "${topic}"` : ''}.
+  const output = await withCuratedBank({
+    moduleId: ctx.moduleId,
+    input, count: question_count, topic, course: level,
+    mapSeed: (row) => ({
+      type: row.type || 'multiple_choice',
+      prompt: row.question,
+      options: row.options || undefined,
+      answer: row.answer,
+      explanation: row.explanation || undefined,
+    }),
+    buildOutput: async ({ remaining }) => {
+      const messages = `Crea una actividad de comprensión lectora para ${audience}, nivel ${level}${topic ? `, temática "${topic}"` : ''}.
 
-Devuelve JSON estricto con este formato:
+Devuelve JSON estricto:
 {
   "title": "string en español",
   "level": "${level}",
-  "passage": "texto en inglés adaptado al nivel (150-250 palabras para A1-A2, 250-400 para B1-B2)",
+  "passage": "texto en inglés adaptado al nivel",
   "exercises": [
-    {
-      "id": 1,
-      "type": "multiple_choice" | "true_false" | "open",
-      "prompt": "pregunta en inglés",
-      "options": ["A","B","C","D"],   // solo en multiple_choice; ["True","False"] en true_false
-      "answer": "respuesta correcta",
-      "explanation": "justificación breve citando la parte del texto, en español"
-    }
+    { "type": "multiple_choice"|"true_false"|"open",
+      "prompt": "...", "options": ["A","B","C","D"], "answer": "...",
+      "explanation": "justificación citando el texto, en español" }
   ]
 }
 
-Genera ${question_count} preguntas. Mezcla literal, inferencial y vocabulario.`;
-
-  const result = await callClaudeJSON({
-    system: JSON_SYSTEM, messages, model: 'haiku', maxTokens: 2500,
+Genera ${remaining} preguntas. Mezcla literal, inferencial y vocabulario.`;
+      return callClaudeJSON({ system: JSON_SYSTEM, messages, model: 'haiku', maxTokens: 2500 });
+    },
   });
-  return { output_kind: 'exercise_set', output: result };
+  return { output_kind: 'exercise_set', output };
 };

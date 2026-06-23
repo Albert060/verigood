@@ -23,10 +23,15 @@ const generateExam = async ({ level, topic, exerciseTypes, totalQuestions, sourc
   let dbQuestions = [];
 
   if (source !== 'ai_only') {
+    // Filtra por module_id ('cambridge') desde la migración 008 — el enum
+    // legacy `module` queda como compat para filas antiguas. Mientras
+    // termina el rollout, aceptamos ambos en el OR para no romper centros
+    // en los que la 008 aún no se haya aplicado.
     const dbResult = await query(
       `SELECT * FROM exam_questions
        WHERE level = $1 AND is_active = true
          AND ($2 = '' OR topic ILIKE '%' || $2 || '%')
+         AND (module_id = 'cambridge' OR module = 'cambridge')
        ORDER BY RANDOM()
        LIMIT $3`,
       [level, topic || '', Math.floor(totalQuestions * 0.6)]

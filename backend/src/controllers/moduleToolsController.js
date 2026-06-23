@@ -150,19 +150,41 @@ const run = async (req, res, next) => {
       model:  default_model,
     };
 
-    // Modo demo: si no hay clave de IA válida, devolvemos un fixture genérico
-    // según el output_kind declarado en BD. Así CUALQUIER tool del catálogo
-    // entra en modo demo automáticamente — mismo comportamiento que Cambridge.
+    // Modo demo: si no hay clave de IA válida, ANTES de cortocircuitar al
+    // fixture genérico comprobamos si exam_questions tiene preguntas curadas
+    // para este módulo. Si las hay, dejamos que el handler corra: con
+    // `withCuratedBank` extraerá los seeds reales y devolverá contenido
+    // específico del módulo en vez de un fixture neutro.
     if (!aiAvailable()) {
-      const demo = demoFixtures.forKind(output_kind, {
-        input,
-        tool: { key: toolKey, name: toolName },
-        moduleId,
-      });
-      if (demo) {
-        return res.json({ ...demo, demo: true });
+      let hasCuratedSeeds = false;
+      if (['exercise_set', 'quiz', 'exam'].includes(output_kind)) {
+        try {
+          const probe = await query(
+            `SELECT 1 FROM exam_questions
+              WHERE module_id = $1 AND is_active = true
+              LIMIT 1`,
+            [moduleId]
+          );
+          hasCuratedSeeds = probe.rows.length > 0;
+        } catch (e) {
+          // Si la columna module_id no existe (mig 008 pendiente), seguimos
+          // con el fixture genérico como antes.
+          hasCuratedSeeds = false;
+        }
       }
-      // output_kind sin generador → seguimos como antes (saltará AI_NOT_CONFIGURED).
+      if (!hasCuratedSeeds) {
+        const demo = demoFixtures.forKind(output_kind, {
+          input,
+          tool: { key: toolKey, name: toolName },
+          moduleId,
+        });
+        if (demo) {
+          return res.json({ ...demo, demo: true });
+        }
+        // output_kind sin generador → seguimos como antes (saltará AI_NOT_CONFIGURED).
+      }
+      // hasCuratedSeeds = true → no cortocircuitamos, dejamos que el handler
+      // corra y `withCuratedBank` devuelva los seeds reales.
     }
 
     let result, usage;
@@ -221,6 +243,23 @@ const run = async (req, res, next) => {
         });
       }
       throw err;
+    }
+
+    // Safety net en modo demo: si el handler devolvió un exercise_set/quiz
+    // sin items (porque la BD curada está vacía o no matchea), caemos al
+    // fixture genérico antes de seguir. Evita "respuesta sin ejercicios" en
+    // pantalla para el profesor.
+    if (!aiAvailable() && result?.output_kind && result?.output) {
+      const items = result.output.exercises || result.output.questions || null;
+      const isEmpty = Array.isArray(items) && items.length === 0;
+      if (isEmpty) {
+        const demo = demoFixtures.forKind(result.output_kind, {
+          input,
+          tool: { key: toolKey, name: toolName },
+          moduleId,
+        });
+        if (demo) return res.json({ ...demo, demo: true });
+      }
     }
 
     // Log de consumo (best-effort; no debe romper la respuesta).

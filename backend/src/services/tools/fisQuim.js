@@ -1,4 +1,5 @@
 const { callClaudeJSON } = require('../claudeService');
+const { withCuratedBank } = require('../hybridGeneratorService');
 
 const SYSTEM =
   'Eres profesor de Física y Química en un IES español, con criterio LOMLOE. ' +
@@ -10,36 +11,36 @@ const SYSTEM =
 exports.problems = async (input, ctx) => {
   const { topic, difficulty, count = 5, course } = input;
 
-  const messages = `Genera ${count} problemas de Física y Química sobre "${topic}", dificultad ${difficulty}, para alumnos de ${course}.
+  const output = await withCuratedBank({
+    moduleId: ctx.moduleId,
+    input, count, topic, course,
+    mapSeed: (row) => ({
+      type: row.type || 'problem',
+      prompt: row.question,
+      answer: row.answer,
+      explanation: row.explanation || undefined,
+    }),
+    buildOutput: async ({ remaining }) => {
+      const messages = `Genera ${remaining} problemas de Física y Química sobre "${topic}", dificultad ${difficulty}, para alumnos de ${course}.
 
-Devuelve JSON estricto con este formato:
+Devuelve JSON estricto:
 {
   "title": "Problemas: ${topic}",
   "topic": "${topic}",
   "difficulty": "${difficulty}",
   "exercises": [
     {
-      "id": 1,
       "type": "problem",
-      "prompt": "enunciado completo del problema con datos numéricos y unidades",
-      "data": "lista de datos extraídos del enunciado (formato 'magnitud = valor unidad')",
-      "unknown": "lo que se pide calcular",
-      "solution_steps": [
-        "Paso 1: planteamiento (qué ley/principio se aplica y por qué)",
-        "Paso 2: ecuación con símbolos",
-        "Paso 3: sustitución con valores y unidades",
-        "Paso 4: operaciones",
-        "Paso 5: resultado final con unidades y comentario sobre orden de magnitud"
-      ],
-      "answer": "resultado final con unidades"
+      "prompt": "enunciado con datos y unidades",
+      "solution_steps": ["Paso 1: ley aplicada", "Paso 2: ecuación", "Paso 3: sustitución"],
+      "answer": "resultado con unidades"
     }
   ]
 }
 
-Comprueba coherencia dimensional. Todo en español de España.`;
-
-  const result = await callClaudeJSON({
-    system: SYSTEM, messages, model: 'haiku', maxTokens: 3000,
+Coherencia dimensional. Todo en español de España.`;
+      return callClaudeJSON({ system: SYSTEM, messages, model: 'haiku', maxTokens: 3000 });
+    },
   });
-  return { output_kind: 'exercise_set', output: result };
+  return { output_kind: 'exercise_set', output };
 };

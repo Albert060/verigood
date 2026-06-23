@@ -28,7 +28,9 @@ const tutoriasEso         = require('./tutoriasEso');
 
 const HANDLERS = {
   // ── output_kind: 'text' ──
-  'ingles.writing':       ingles.writing,
+  'ingles.writing':       ingles.writing, // legacy alias (compartido)
+  'ingles_prim.writing':  ingles.writing, // separado: Primaria
+  'ingles_eso.writing':   ingles.writing, // separado: ESO
   'plastica.projects':    plastica.projects,
   'musica.listening':     musica.listening,
   'musica.theory':        musica.theory,
@@ -61,8 +63,12 @@ const HANDLERS = {
   'tutorias.conflict':     tutoriasEso.conflict,
 
   // ── output_kind: 'exercise_set' ──
-  'ingles.exercises':     ingles.exercises,
-  'ingles.reading':       ingles.reading,
+  'ingles.exercises':       ingles.exercises, // legacy alias (compartido)
+  'ingles.reading':         ingles.reading,
+  'ingles_prim.exercises':  ingles.exercises, // separado: Primaria
+  'ingles_prim.reading':    ingles.reading,
+  'ingles_eso.exercises':   ingles.exercises, // separado: ESO
+  'ingles_eso.reading':     ingles.reading,
   'byg.exam':             bioGeo.exam,
   'fyq.problems':         fisQuim.problems,
 
