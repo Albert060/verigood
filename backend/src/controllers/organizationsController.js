@@ -114,12 +114,122 @@ const getStats = async (req, res) => {
       ),
     ]);
 
+    // Agregados para la página /dashboard/stats. Todo viene de usage_logs.
+    // El módulo "real" vive en metadata->>'moduleId' para las tools del
+    // catálogo Fase 1 (porque module es un enum legacy hardcodeado a
+    // 'cambridge'). Para Cambridge nativo, metadata.moduleId no existe y
+    // usamos module::text.
+    // Categorización de action_type → exámenes / correcciones / dinámicas
+    // se hace por LIKE; es heurística pero estable con el catálogo actual.
+    const realModuleExpr = `COALESCE(metadata->>'moduleId', module::text)`;
+    const categoryExpr = `CASE
+        WHEN action_type ILIKE '%correct%' OR action_type ILIKE '%ocr%' THEN 'corrections'
+        WHEN action_type ILIKE '%dynamic%' OR action_type ILIKE '%dinamic%' THEN 'dynamics'
+        ELSE 'exams'
+      END`;
+
+    const [totalsResult, weeklyResult, moduleBreakResult, byTeacherResult, modulesCatalogResult] = await Promise.all([
+      // Totales del mes en curso + mes anterior (para delta).
+      query(
+        `SELECT
+           COUNT(*) FILTER (WHERE ul.created_at >= date_trunc('month', NOW()))::int AS current_month,
+           COUNT(*) FILTER (
+             WHERE ul.created_at >= date_trunc('month', NOW()) - INTERVAL '1 month'
+               AND ul.created_at <  date_trunc('month', NOW())
+           )::int AS previous_month
+         FROM usage_logs ul
+         WHERE ul.organization_id = $1 ${ownerFilter}`,
+        ownerParams
+      ),
+      // Uso por semana del mes en curso (semana 1 a 5 según el día del mes).
+      query(
+        `SELECT
+           LEAST(5, CEIL(EXTRACT(DAY FROM ul.created_at)::int / 7.0))::int AS week,
+           COUNT(*)::int AS count
+         FROM usage_logs ul
+         WHERE ul.organization_id = $1
+           AND ul.created_at >= date_trunc('month', NOW())
+           ${ownerFilter}
+         GROUP BY week
+         ORDER BY week`,
+        ownerParams
+      ),
+      // Uso por módulo (mes en curso). Usa el moduleId real cuando lo hay.
+      query(
+        `SELECT ${realModuleExpr} AS module_id, COUNT(*)::int AS count
+         FROM usage_logs ul
+         WHERE ul.organization_id = $1
+           AND ul.created_at >= date_trunc('month', NOW())
+           ${ownerFilter}
+         GROUP BY module_id
+         ORDER BY count DESC
+         LIMIT 8`,
+        ownerParams
+      ),
+      // Desglose por profesor del centro (mes en curso) con categorías.
+      query(
+        `SELECT
+           u.id, u.name,
+           COUNT(*) FILTER (WHERE ${categoryExpr} = 'exams')::int       AS exams,
+           COUNT(*) FILTER (WHERE ${categoryExpr} = 'corrections')::int AS corrections,
+           COUNT(*) FILTER (WHERE ${categoryExpr} = 'dynamics')::int    AS dynamics,
+           COUNT(*)::int AS total
+         FROM usage_logs ul
+         JOIN users u ON u.id = ul.user_id
+         WHERE ul.organization_id = $1
+           AND ul.created_at >= date_trunc('month', NOW())
+           ${ownerFilter}
+         GROUP BY u.id, u.name
+         ORDER BY total DESC
+         LIMIT 12`,
+        ownerParams
+      ),
+      // Nombres legibles del catálogo para mostrar en la breakdown / top.
+      query(`SELECT id, name FROM modules`),
+    ]);
+
+    const moduleNameById = Object.fromEntries(
+      modulesCatalogResult.rows.map((m) => [m.id, m.name])
+    );
+    const labelFor = (id) => moduleNameById[id] || id;
+
+    const breakdown = moduleBreakResult.rows.map((r) => ({
+      module_id: r.module_id,
+      label: labelFor(r.module_id),
+      count: r.count,
+    }));
+
+    const teacherStats = byTeacherResult.rows;
+    const totals = totalsResult.rows[0] || { current_month: 0, previous_month: 0 };
+    const deltaPct = totals.previous_month > 0
+      ? Math.round(((totals.current_month - totals.previous_month) / totals.previous_month) * 100)
+      : null;
+
+    // Heurística: cada generación ahorra ~15 minutos de trabajo manual.
+    const hoursSaved = Math.round(totals.current_month * 0.25);
+
+    const topTeacher = teacherStats[0] || null;
+    const topModule = breakdown[0] || null;
+
     res.json({
       users: usersResult.rows[0],
       usageByModule: usageResult.rows,
       recentActivity: recentResult.rows,
+      // Bloques específicos de /dashboard/stats:
+      monthly: {
+        current_month:  totals.current_month,
+        previous_month: totals.previous_month,
+        delta_pct:      deltaPct,
+        hours_saved:    hoursSaved,
+      },
+      weeklyUsage: weeklyResult.rows, // [{ week: 1..5, count }]
+      moduleBreakdown: breakdown,     // [{ module_id, label, count }]
+      teacherStats,                   // [{ id, name, exams, corrections, dynamics, total }]
+      topTeacher: topTeacher ? { id: topTeacher.id, name: topTeacher.name, total: topTeacher.total } : null,
+      topModule:  topModule  ? { id: topModule.module_id, label: topModule.label, count: topModule.count } : null,
     });
   } catch (err) {
+    console.error('getStats error:', err);
     res.status(500).json({ error: 'Error al obtener estadísticas' });
   }
 };

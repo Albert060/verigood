@@ -684,7 +684,7 @@ Base URL: `https://verigood.es/api` (producción) · `http://localhost:3001/api`
 | GET | `/users/:userId/modules` | Módulos asignados a un profe |
 | POST | `/users/:userId/modules/:moduleId` | Asignar módulo al profe (admin) |
 | DELETE | `/users/:userId/modules/:moduleId` | Desasignar (admin) |
-| GET | `/organizations/:id/stats` | Stats + actividad reciente (admin: toda la org; profe: solo lo suyo) |
+| GET | `/organizations/:id/stats` | Stats + actividad reciente. Devuelve `monthly`, `weeklyUsage`, `moduleBreakdown`, `teacherStats`, `topTeacher`, `topModule` además de `users`/`usageByModule`/`recentActivity`. Filtrado por `user_id` cuando el rol es profesor. |
 | GET | `/organizations/:id/onboarding-state` | Estado onboarding |
 | POST | `/organizations/:id/onboarding-state/complete` | Marcar completado |
 | **Tools (catálogo Fase 1)** | | |

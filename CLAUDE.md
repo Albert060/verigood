@@ -192,9 +192,25 @@ JWT access tokens (15 min) + rotating refresh tokens (7 días, en PostgreSQL).
 
 ### Visibilidad de actividad reciente
 
-`GET /api/organizations/:orgId/stats` (controller `organizationsController.getStats`) sirve tanto el dashboard institucional como `RecentActivityList`. Filtra `usage_logs` por rol:
+`GET /api/organizations/:orgId/stats` (controller `organizationsController.getStats`) sirve tanto el dashboard institucional, como `RecentActivityList`, como `/dashboard/stats`. Devuelve:
 
-- `admin_centro` y `superadmin` → toda la actividad de la org (consumo por módulo + últimas 10 acciones).
+```
+users           — active_users / total_users
+usageByModule   — top action_types últimos 30 días (legacy, para dashboard)
+recentActivity  — últimas 10 acciones (alimenta RecentActivityList)
+monthly         — { current_month, previous_month, delta_pct, hours_saved }
+weeklyUsage     — [{ week: 1..5, count }] del mes en curso
+moduleBreakdown — [{ module_id, label, count }] del mes (usa metadata->>'moduleId'
+                  para tools Fase 1, module::text para Cambridge nativo)
+teacherStats    — desglose por profe del mes con categorías exams/corrections/dynamics
+                  (LIKE sobre action_type)
+topTeacher      — el primero de teacherStats
+topModule       — el primero de moduleBreakdown
+```
+
+Filtra `usage_logs` por rol:
+
+- `admin_centro` y `superadmin` → toda la actividad de la org.
 - `profesor` → solo sus propias filas (`ul.user_id = req.user.id`). El criterio "solo módulos asignados" se cumple por construcción: `requireModuleActive` impide registrar `usage_logs` de módulos no asignados, así que el conjunto del profe ya está acotado a sus módulos. No hace falta JOIN extra contra `user_modules` (que además rompería el histórico si el admin retira un módulo después).
 
 ---

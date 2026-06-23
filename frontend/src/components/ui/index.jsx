@@ -168,10 +168,23 @@ export function SectionLabel({ children, className = '' }) {
 
 // ── Stats Card ────────────────────────────────────────────────
 export function StatCard({ label, value, delta, deltaUp, mono = true }) {
+  // Para valores no-mono (nombres de profe / módulo) el texto puede llegar
+  // largo y desbordar el ancho del card. Reducimos el tamaño automáticamente
+  // y forzamos truncate con ellipsis sin romper el resto de variantes.
+  const valueStr = typeof value === 'string' ? value : '';
+  const isLong = !mono && valueStr.length > 12;
+  const sizeClass = mono
+    ? 'text-[36px]'
+    : isLong
+      ? (valueStr.length > 18 ? 'text-[22px]' : 'text-[28px]')
+      : 'text-[36px]';
   return (
-    <div className="bg-card-bg border border-linea p-6 shadow-card rounded-2xl transition-all duration-200 hover:shadow-card-hover hover:-translate-y-0.5">
+    <div className="bg-card-bg border border-linea p-6 shadow-card rounded-2xl transition-all duration-200 hover:shadow-card-hover hover:-translate-y-0.5 overflow-hidden">
       <div className="section-label mb-3">{label}</div>
-      <div className={`text-[36px] leading-none text-tinta mb-2 ${mono ? 'font-mono' : 'font-display font-bold'}`}>
+      <div
+        className={`${sizeClass} leading-tight text-tinta mb-2 truncate ${mono ? 'font-mono' : 'font-display font-bold'}`}
+        title={valueStr || undefined}
+      >
         {value}
       </div>
       {delta && (
