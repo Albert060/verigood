@@ -80,26 +80,45 @@ const createUser = async (req, res) => {
   }
 };
 
-// PATCH /users/:userId
+// PATCH /users/:userId — editar nombre / rol / activación
+// Permite tanto la edición desde el modal "Editar profesor" (name/role) como
+// el toggle Activar/Desactivar (is_active). Salvaguardas:
+//   - admin_centro no puede editarse a sí mismo (evita autobloqueo por error).
+//   - solo superadmin puede mover un usuario a rol superadmin.
 const updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const { name, role, is_active } = req.body;
 
-    const userResult = await query('SELECT organization_id FROM users WHERE id = $1', [userId]);
+    const userResult = await query('SELECT organization_id, role FROM users WHERE id = $1', [userId]);
     if (!userResult.rows[0]) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
+    const target = userResult.rows[0];
 
-    if (req.user.role !== 'superadmin' && userResult.rows[0].organization_id !== req.user.organization_id) {
+    if (req.user.role !== 'superadmin' && target.organization_id !== req.user.organization_id) {
       return res.status(403).json({ error: 'Acceso denegado' });
+    }
+    if (req.user.id === userId && (role !== undefined || is_active === false)) {
+      return res.status(409).json({
+        error: 'No puedes cambiar tu propio rol ni desactivarte. Pídele a otro admin que lo haga.',
+        code: 'CANNOT_SELF_MUTATE',
+      });
+    }
+    if (role !== undefined && !['admin_centro', 'profesor'].includes(role) && req.user.role !== 'superadmin') {
+      return res.status(400).json({ error: 'Rol no válido', code: 'BAD_ROLE' });
     }
 
     const fields = [];
     const values = [];
     let idx = 1;
 
-    if (name !== undefined) { fields.push(`name = $${idx++}`); values.push(name); }
+    if (name !== undefined) {
+      if (typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ error: 'El nombre no puede estar vacío' });
+      }
+      fields.push(`name = $${idx++}`); values.push(name.trim());
+    }
     if (role !== undefined) { fields.push(`role = $${idx++}`); values.push(role); }
     if (is_active !== undefined) { fields.push(`is_active = $${idx++}`); values.push(is_active); }
 
@@ -117,11 +136,17 @@ const updateUser = async (req, res) => {
 
     res.json({ user: result.rows[0] });
   } catch (err) {
+    console.error('updateUser error:', err);
     res.status(500).json({ error: 'Error al actualizar usuario' });
   }
 };
 
-// DELETE /users/:userId
+// DELETE /users/:userId — eliminación REAL del profesor.
+// Las FKs hacia users (exams, exam_attempts, usage_logs, library_items) son
+// NOT NULL sin CASCADE, así que solo permitimos borrado duro cuando el profe
+// no tiene actividad asociada (típicamente cuentas recién invitadas que nunca
+// llegaron a usarse). Si tiene historial, devolvemos 409 y el admin tiene que
+// recurrir a "Desactivar" para preservar trazabilidad / RGPD.
 const deleteUser = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -130,16 +155,56 @@ const deleteUser = async (req, res) => {
     if (!userResult.rows[0]) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
+    const target = userResult.rows[0];
 
-    if (req.user.role !== 'superadmin' && userResult.rows[0].organization_id !== req.user.organization_id) {
+    if (req.user.role !== 'superadmin' && target.organization_id !== req.user.organization_id) {
       return res.status(403).json({ error: 'Acceso denegado' });
     }
+    if (req.user.id === userId) {
+      return res.status(409).json({
+        error: 'No puedes eliminar tu propia cuenta',
+        code: 'CANNOT_SELF_DELETE',
+      });
+    }
+    if (target.role === 'admin_centro') {
+      // Evita que el centro se quede sin ningún admin activo.
+      const { rows: [count] } = await query(
+        `SELECT COUNT(*)::int AS n FROM users
+          WHERE organization_id = $1 AND role = 'admin_centro' AND is_active = true AND id <> $2`,
+        [target.organization_id, userId]
+      );
+      if (count.n === 0) {
+        return res.status(409).json({
+          error: 'No puedes eliminar al último administrador activo del centro',
+          code: 'LAST_ADMIN',
+        });
+      }
+    }
 
-    // Soft delete
-    await query('UPDATE users SET is_active = false WHERE id = $1', [userId]);
+    // Comprueba historial. Si existe, NO borramos: invitamos a desactivar.
+    const { rows: [usage] } = await query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM usage_logs     WHERE user_id    = $1) AS usage_count,
+         (SELECT COUNT(*)::int FROM exams          WHERE teacher_id = $1) AS exams_count,
+         (SELECT COUNT(*)::int FROM exam_attempts  WHERE teacher_id = $1) AS attempts_count,
+         (SELECT COUNT(*)::int FROM library_items  WHERE teacher_id = $1) AS library_count`,
+      [userId]
+    );
+    const total = usage.usage_count + usage.exams_count + usage.attempts_count + usage.library_count;
+    if (total > 0) {
+      return res.status(409).json({
+        error: 'Este profesor tiene actividad registrada. Desactívalo en su lugar para conservar el historial.',
+        code: 'HAS_ACTIVITY',
+        counts: usage,
+      });
+    }
 
-    res.json({ message: 'Usuario desactivado' });
+    // Sin historial: borrado duro. refresh_tokens, notifications y
+    // user_modules tienen CASCADE → se limpian solos.
+    await query('DELETE FROM users WHERE id = $1', [userId]);
+    res.json({ ok: true, message: 'Profesor eliminado' });
   } catch (err) {
+    console.error('deleteUser error:', err);
     res.status(500).json({ error: 'Error al eliminar usuario' });
   }
 };

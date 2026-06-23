@@ -577,6 +577,16 @@ POST /api/auth/logout
 GET  /api/auth/me
 ```
 
+### Usuarios (gestión de profesores por el admin del centro)
+```
+GET    /api/organizations/:orgId/users                       # listado del centro
+POST   /api/organizations/:orgId/users                       # invitar (devuelve tempPassword)
+PATCH  /api/users/:userId                                    # editar name / role / is_active
+DELETE /api/users/:userId                                    # eliminar REAL (409 HAS_ACTIVITY si tiene historial; 409 LAST_ADMIN)
+```
+
+`PATCH` y `DELETE` aplican salvaguardas: el admin no puede mutarse a sí mismo (`CANNOT_SELF_MUTATE` / `CANNOT_SELF_DELETE`) ni eliminar al último admin activo del centro. La eliminación dura solo se permite si no hay filas en `usage_logs`, `exams`, `exam_attempts` o `library_items` para ese user_id; en caso contrario el flujo correcto es desactivar (PATCH `is_active=false`).
+
 ### Módulos
 ```
 GET    /api/modules                                          # catálogo global

@@ -16,6 +16,8 @@ export default function InstitutionalUsers() {
   const [form, setForm] = useState({ name: '', email: '', role: 'profesor' });
   const [createdInfo, setCreatedInfo] = useState(null);
   const [modulesTarget, setModulesTarget] = useState(null); // { id, name }
+  const [editTarget, setEditTarget] = useState(null);       // { id, name, role }
+  const [deleteTarget, setDeleteTarget] = useState(null);   // user completo
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -39,6 +41,22 @@ export default function InstitutionalUsers() {
   const toggleActiveMut = useMutation({
     mutationFn: ({ userId, is_active }) => usersApi.update(userId, { is_active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users', orgId] }),
+  });
+
+  const editMut = useMutation({
+    mutationFn: ({ userId, payload }) => usersApi.update(userId, payload),
+    onSuccess: () => {
+      setEditTarget(null);
+      qc.invalidateQueries({ queryKey: ['users', orgId] });
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (userId) => usersApi.delete(userId),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      qc.invalidateQueries({ queryKey: ['users', orgId] });
+    },
   });
 
   const handleInvite = (e) => {
@@ -97,23 +115,53 @@ export default function InstitutionalUsers() {
                     </Badge>
                   </td>
                   <td className="text-right">
-                    <div className="flex justify-end gap-3">
-                      {u.role === 'profesor' && (
-                        <button
-                          className="font-mono text-[10px] text-marino hover:underline"
-                          onClick={() => setModulesTarget(u)}
-                        >
-                          Módulos
-                        </button>
-                      )}
-                      <button
-                        className="font-mono text-[10px] text-marron-soft hover:text-granate"
-                        onClick={() => toggleActiveMut.mutate({ userId: u.id, is_active: !u.is_active })}
-                        disabled={toggleActiveMut.isPending}
-                      >
-                        {u.is_active ? 'Desactivar' : 'Activar'}
-                      </button>
-                    </div>
+                    {/* Auto-protección: el admin no puede editarse / desactivarse /
+                        eliminarse a sí mismo desde esta vista. El backend también
+                        lo bloquea (CANNOT_SELF_*), pero ocultamos los CTAs para
+                        evitar el clic inútil. */}
+                    {(() => {
+                      const isSelf = u.id === user?.id;
+                      return (
+                        <div className="flex justify-end gap-3">
+                          {u.role === 'profesor' && (
+                            <button
+                              className="font-mono text-[10px] text-marino hover:underline"
+                              onClick={() => setModulesTarget(u)}
+                            >
+                              Módulos
+                            </button>
+                          )}
+                          {!isSelf && (
+                            <button
+                              className="font-mono text-[10px] text-marron-soft hover:text-marino"
+                              onClick={() => setEditTarget({ id: u.id, name: u.name, role: u.role })}
+                            >
+                              Editar
+                            </button>
+                          )}
+                          {!isSelf && (
+                            <button
+                              className="font-mono text-[10px] text-marron-soft hover:text-granate"
+                              onClick={() => toggleActiveMut.mutate({ userId: u.id, is_active: !u.is_active })}
+                              disabled={toggleActiveMut.isPending}
+                            >
+                              {u.is_active ? 'Desactivar' : 'Activar'}
+                            </button>
+                          )}
+                          {!isSelf && (
+                            <button
+                              className="font-mono text-[10px] text-granate hover:underline"
+                              onClick={() => setDeleteTarget(u)}
+                            >
+                              Eliminar
+                            </button>
+                          )}
+                          {isSelf && (
+                            <span className="font-mono text-[10px] text-marron-soft italic">tú</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}
@@ -186,6 +234,69 @@ export default function InstitutionalUsers() {
         )}
       </Modal>
 
+      {/* ── Editar profesor ─────────────────────────────────── */}
+      {editTarget && (
+        <EditUserModal
+          target={editTarget}
+          onChange={setEditTarget}
+          onClose={() => { setEditTarget(null); editMut.reset(); }}
+          onSave={() => editMut.mutate({
+            userId: editTarget.id,
+            payload: { name: editTarget.name, role: editTarget.role },
+          })}
+          saving={editMut.isPending}
+          error={editMut.error?.response?.data?.error}
+        />
+      )}
+
+      {/* ── Eliminar profesor ───────────────────────────────── */}
+      {deleteTarget && (
+        <Modal
+          open
+          onClose={() => { setDeleteTarget(null); deleteMut.reset(); }}
+          title="Eliminar profesor"
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => { setDeleteTarget(null); deleteMut.reset(); }}>
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                loading={deleteMut.isPending}
+                onClick={() => deleteMut.mutate(deleteTarget.id)}
+              >
+                Eliminar definitivamente
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <p className="text-[13px] text-tinta">
+              Vas a eliminar a <strong>{deleteTarget.name}</strong> ({deleteTarget.email}).
+            </p>
+            <p className="font-mono text-[11px] text-marron-soft">
+              Solo es posible si el profesor no tiene actividad registrada. Si ha generado
+              recursos, exámenes u OCR, deberás usar "Desactivar" para conservar el
+              historial conforme a RGPD.
+            </p>
+            {deleteMut.isError && (
+              <div className="bg-[rgba(107,31,42,0.08)] border border-granate p-2 font-mono text-[11px] text-granate">
+                {deleteMut.error?.response?.data?.error || 'Error al eliminar.'}
+                {deleteMut.error?.response?.data?.code === 'HAS_ACTIVITY' && (() => {
+                  const c = deleteMut.error.response.data.counts || {};
+                  const parts = [];
+                  if (c.usage_count)    parts.push(`${c.usage_count} usos`);
+                  if (c.exams_count)    parts.push(`${c.exams_count} exámenes`);
+                  if (c.attempts_count) parts.push(`${c.attempts_count} correcciones`);
+                  if (c.library_count)  parts.push(`${c.library_count} recursos`);
+                  return parts.length ? <div className="mt-1 text-marron-soft">{parts.join(' · ')}</div> : null;
+                })()}
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
       {/* ── Asignación de módulos ───────────────────────────── */}
       {modulesTarget && (
         <UserModulesModal
@@ -195,6 +306,53 @@ export default function InstitutionalUsers() {
         />
       )}
     </div>
+  );
+}
+
+function EditUserModal({ target, onChange, onClose, onSave, saving, error }) {
+  const update = (k) => (e) => onChange({ ...target, [k]: e.target.value });
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Editar profesor"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button
+            loading={saving}
+            disabled={!target.name?.trim()}
+            onClick={onSave}
+          >
+            Guardar cambios
+          </Button>
+        </>
+      }
+    >
+      <form
+        onSubmit={(e) => { e.preventDefault(); onSave(); }}
+        className="space-y-4"
+      >
+        <Input
+          label="NOMBRE COMPLETO"
+          value={target.name}
+          onChange={update('name')}
+          required
+        />
+        <Select label="ROL" value={target.role} onChange={update('role')}>
+          <option value="profesor">Profesor</option>
+          <option value="admin_centro">Administrador</option>
+        </Select>
+        {error && (
+          <div className="bg-[rgba(107,31,42,0.08)] border border-granate p-2 font-mono text-[11px] text-granate">
+            {error}
+          </div>
+        )}
+        <p className="font-mono text-[11px] text-marron-soft">
+          El email es identificador de login y no se puede cambiar desde esta pantalla.
+        </p>
+      </form>
+    </Modal>
   );
 }
 

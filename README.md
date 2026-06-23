@@ -671,6 +671,11 @@ Base URL: `https://verigood.es/api` (producción) · `http://localhost:3001/api`
 | POST | `/auth/refresh` | Renovar access token |
 | POST | `/auth/logout` | Cerrar sesión |
 | GET | `/auth/me` | Usuario actual |
+| **Profesores (CRUD admin)** | | |
+| GET | `/organizations/:id/users` | Listado del centro |
+| POST | `/organizations/:id/users` | Invitar profesor (devuelve `tempPassword`) |
+| PATCH | `/users/:userId` | Editar nombre / rol / `is_active` (Desactivar = `is_active:false`) |
+| DELETE | `/users/:userId` | Eliminar REAL (`409 HAS_ACTIVITY` si tiene historial; `409 LAST_ADMIN`) |
 | **Módulos** | | |
 | GET | `/modules` | Catálogo global |
 | GET | `/organizations/:id/modules` | Módulos activos de la org |
