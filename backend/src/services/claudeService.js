@@ -2,7 +2,23 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { AsyncLocalStorage } = require('async_hooks');
 const { aiAvailable } = require('../utils/aiAvailable');
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// La clave de Anthropic se resuelve por organización en runtime.
+// El dispatcher de tools envuelve la invocación con runWithApiKey(orgKey, fn),
+// y aquí leemos la clave del store local async. Si no hay store, intentamos
+// caer al ANTHROPIC_API_KEY del .env (solo para dev/tests).
+const apiKeyStore = new AsyncLocalStorage();
+
+const runWithApiKey = (apiKey, fn) => apiKeyStore.run(apiKey || null, fn);
+
+const resolveApiKey = () => {
+  const fromStore = apiKeyStore.getStore();
+  if (fromStore) return fromStore;
+  // Fallback solo si el .env está realmente configurado (tests / scripts).
+  const envKey = (process.env.ANTHROPIC_API_KEY || '').trim();
+  return aiAvailable(envKey) ? envKey : null;
+};
+
+const clientFor = (apiKey) => new Anthropic({ apiKey });
 
 // Convierte errores de la SDK de Anthropic en errores con un `code` estable
 // que el dispatcher de tools mapea a status HTTP + mensaje en español. Sin esto
@@ -67,11 +83,10 @@ const recordUsage = (modelId, usage) => {
  * @param {number} opts.maxTokens
  */
 const callClaude = async ({ system, messages, model = 'haiku', maxTokens = 2048 }) => {
-  // Cortocircuito en modo demo (sin key o key placeholder). Antes esto solo
-  // se comprobaba en algunos servicios (Cambridge); ahora afecta a CUALQUIER
-  // handler que pase por aquí.
-  if (!aiAvailable()) {
-    const err = new Error('La integración con la API de IA no está configurada en este entorno.');
+  const apiKey = resolveApiKey();
+  // Cortocircuito en modo demo (sin clave para esta org).
+  if (!aiAvailable(apiKey)) {
+    const err = new Error('La integración con la API de IA no está configurada para tu centro.');
     err.code = 'AI_NOT_CONFIGURED';
     throw err;
   }
@@ -83,7 +98,7 @@ const callClaude = async ({ system, messages, model = 'haiku', maxTokens = 2048 
   const modelId = MODELS[model];
   let response;
   try {
-    response = await client.messages.create({
+    response = await clientFor(apiKey).messages.create({
       model: modelId,
       max_tokens: maxTokens,
       system,
@@ -149,4 +164,6 @@ module.exports = {
   parseJSON,
   MODELS,
   runWithUsageCapture,
+  runWithApiKey,
+  resolveApiKey,
 };

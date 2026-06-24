@@ -118,10 +118,10 @@ export default function InstitutionalBilling() {
     [invoices]
   );
 
-  // El CTA "Gestionar suscripción" abre nuestra propia página de gestión
-  // (/dashboard/billing/manage), que internamente delega en Stripe (portal /
-  // checkout) o degrada a CTAs deshabilitados si Stripe no está configurado.
-  const goToManage = () => navigate('/dashboard/billing/manage');
+  // El antiguo CTA "Gestionar suscripción" se eliminó. Ahora el centro paga
+  // la IA directamente a Anthropic con su propia clave (configurable en
+  // /dashboard/anthropic), y VeriGood solo mantiene el histórico de facturas.
+  const goToAnthropic = () => navigate('/dashboard/anthropic');
 
   // Reglas de descarga, en este orden:
   //   1. Si trae invoice_pdf (Stripe real) → abrimos el PDF oficial.
@@ -191,10 +191,10 @@ export default function InstitutionalBilling() {
             </div>
           </div>
           <div className="flex flex-col items-end justify-end gap-2">
-            <Button onClick={goToManage}>
-              Gestionar suscripción
+            <Button onClick={goToAnthropic}>
+              Configurar IA
             </Button>
-            <p className="font-mono text-[10px] text-marron-soft text-right">Cambia plan, actualiza pago o cancela</p>
+            <p className="font-mono text-[10px] text-marron-soft text-right">Pega tu clave de Anthropic para activar la IA</p>
           </div>
         </div>
       </div>

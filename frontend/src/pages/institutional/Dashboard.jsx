@@ -84,13 +84,26 @@ export default function InstitutionalDashboard() {
         />
       )}
 
-      {/* Stats — datos reales del backend, sin mocks */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
-        <StatCard label="PROFESORES" value={stats?.users?.active_users ?? 0} />
-        <StatCard label="MÓDULOS ACTIVOS" value={activeModules.length} />
-        <StatCard label="ACCIONES IA (30D)" value={usageByModule.reduce((s, u) => s + Number(u.count || 0), 0)} />
-        <StatCard label="ÚLTIMA ACTIVIDAD" value={recentActivity[0]?.created_at ? new Date(recentActivity[0].created_at).toLocaleDateString('es-ES') : '—'} />
-      </div>
+      {/* Stats — datos reales del backend, sin mocks.
+          "PROFESORES" es info de gestión (cuenta del centro), solo
+          relevante para admin_centro / superadmin. Para profesor lo
+          ocultamos y la grid se reajusta a 3 columnas en lg. */}
+      {(() => {
+        const isProfesor = user?.role === 'profesor';
+        const gridCols = isProfesor
+          ? 'grid-cols-1 sm:grid-cols-3'
+          : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4';
+        return (
+          <div className={`grid ${gridCols} gap-5 mb-10`}>
+            {!isProfesor && (
+              <StatCard label="PROFESORES" value={stats?.users?.active_users ?? 0} />
+            )}
+            <StatCard label="MÓDULOS ACTIVOS" value={activeModules.length} />
+            <StatCard label="ACCIONES IA (30D)" value={usageByModule.reduce((s, u) => s + Number(u.count || 0), 0)} />
+            <StatCard label="ÚLTIMA ACTIVIDAD" value={recentActivity[0]?.created_at ? new Date(recentActivity[0].created_at).toLocaleDateString('es-ES') : '—'} />
+          </div>
+        );
+      })()}
 
       {/* Module tiles */}
       <SectionLabel className="mb-5">MÓDULOS ACTIVOS</SectionLabel>

@@ -3,7 +3,7 @@
 // cliente de Google Vision. El prompt y la configuración por asignatura viven
 // en ocrSubjects.js.
 
-const { callClaudeJSON } = require('./claudeService');
+const { callClaudeJSON, resolveApiKey } = require('./claudeService');
 const { extractTextFromImage } = require('./ocrCorrectorService');
 const { getConfig } = require('./ocrSubjects');
 const { aiAvailable } = require('../utils/aiAvailable');
@@ -60,7 +60,7 @@ Ejemplo de respuesta del alumno: contenido placeholder para que la corrección I
 
   // 2) Corrección
   let correction;
-  if (!aiAvailable()) {
+  if (!aiAvailable(resolveApiKey())) {
     correction = demoFixture(cfg, { course });
   } else {
     const userMessage = cfg.userPromptBuilder({ extractedText, course, focus, feedbackMode });

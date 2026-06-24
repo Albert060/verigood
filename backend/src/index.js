@@ -21,6 +21,7 @@ const lenguaRoutes = require('./routes/lengua');
 const matematicasRoutes = require('./routes/matematicas');
 const medioRoutes = require('./routes/medio');
 const stripeRoutes = require('./routes/stripe');
+const anthropicRoutes = require('./routes/anthropic');
 const pdfRoutes = require('./routes/pdf');
 
 const app = express();
@@ -81,6 +82,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api', usersRoutes);
 app.use('/api', organizationsRoutes);
+app.use('/api', anthropicRoutes);
 app.use('/api', modulesRoutes);
 app.use('/api', moduleToolsRoutes);
 app.use('/api', moduleOcrRoutes);

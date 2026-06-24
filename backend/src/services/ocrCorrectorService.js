@@ -1,4 +1,4 @@
-const { callClaudeJSON } = require('./claudeService');
+const { callClaudeJSON, resolveApiKey } = require('./claudeService');
 const { aiAvailable } = require('../utils/aiAvailable');
 const fixtures = require('./demoFixtures');
 
@@ -36,7 +36,7 @@ const extractTextFromImage = async (imageBuffer) => {
 };
 
 const correctExam = async ({ extractedText, certification, level, feedbackMode = 'full' }) => {
-  if (!aiAvailable()) {
+  if (!aiAvailable(resolveApiKey())) {
     return fixtures.ocrCorrection({ certification, level });
   }
 

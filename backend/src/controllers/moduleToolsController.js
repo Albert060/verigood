@@ -1,7 +1,8 @@
 const { query } = require('../config/database');
 const toolsRegistry = require('../services/tools');
-const { runWithUsageCapture } = require('../services/claudeService');
+const { runWithUsageCapture, runWithApiKey } = require('../services/claudeService');
 const { aiAvailable } = require('../utils/aiAvailable');
+const { resolveOrgApiKey } = require('../utils/orgApiKey');
 const demoFixtures = require('../services/tools/demoFixtures');
 const { notify, TYPES: NOTIF_TYPES } = require('../services/notifyService');
 const { trackAiError } = require('../services/aiErrorThrottle');
@@ -150,12 +151,17 @@ const run = async (req, res, next) => {
       model:  default_model,
     };
 
-    // Modo demo: si no hay clave de IA válida, ANTES de cortocircuitar al
+    // Resolver la clave de Anthropic de ESTA organización (cifrada en BD).
+    // Si no hay, la org está en modo demo aunque otra org del mismo servidor
+    // sí la tenga configurada — multi-tenant limpio.
+    const orgApiKey = await resolveOrgApiKey(req.user.organization_id);
+
+    // Modo demo: si la org no tiene clave válida, ANTES de cortocircuitar al
     // fixture genérico comprobamos si exam_questions tiene preguntas curadas
     // para este módulo. Si las hay, dejamos que el handler corra: con
     // `withCuratedBank` extraerá los seeds reales y devolverá contenido
     // específico del módulo en vez de un fixture neutro.
-    if (!aiAvailable()) {
+    if (!aiAvailable(orgApiKey)) {
       let hasCuratedSeeds = false;
       if (['exercise_set', 'quiz', 'exam'].includes(output_kind)) {
         try {
@@ -189,8 +195,13 @@ const run = async (req, res, next) => {
 
     let result, usage;
     try {
-      const captured = await runWithUsageCapture(() =>
-        toolsRegistry.run(toolKey, input, ctx)
+      // runWithApiKey inyecta la clave de la org en el AsyncLocalStorage de
+      // claudeService. Cualquier callClaude dentro del handler usará esa
+      // clave en vez de la del .env. Si orgApiKey es null, claudeService
+      // resolverá null y los handlers caerán al fallback de BD/fixture vía
+      // hybridGeneratorService.
+      const captured = await runWithApiKey(orgApiKey, () =>
+        runWithUsageCapture(() => toolsRegistry.run(toolKey, input, ctx))
       );
       result = captured.result;
       usage  = captured.usage;
@@ -249,7 +260,7 @@ const run = async (req, res, next) => {
     // sin items (porque la BD curada está vacía o no matchea), caemos al
     // fixture genérico antes de seguir. Evita "respuesta sin ejercicios" en
     // pantalla para el profesor.
-    if (!aiAvailable() && result?.output_kind && result?.output) {
+    if (!aiAvailable(orgApiKey) && result?.output_kind && result?.output) {
       const items = result.output.exercises || result.output.questions || null;
       const isEmpty = Array.isArray(items) && items.length === 0;
       if (isEmpty) {

@@ -1,6 +1,8 @@
 const { query } = require('../config/database');
 const { getPublicConfig, isEnabled } = require('../services/ocrSubjects');
 const { processSubjectExam } = require('../services/ocrSubjectCorrectorService');
+const { runWithApiKey } = require('../services/claudeService');
+const { resolveOrgApiKey } = require('../utils/orgApiKey');
 const { notify, TYPES: NOTIF_TYPES } = require('../services/notifyService');
 
 // GET /api/modules/:moduleId/ocr/config
@@ -36,13 +38,14 @@ const correctOcr = async (req, res) => {
 
     const { course, focus, feedbackMode = 'full' } = req.body || {};
 
-    const result = await processSubjectExam({
+    const orgApiKey = await resolveOrgApiKey(req.user.organization_id);
+    const result = await runWithApiKey(orgApiKey, () => processSubjectExam({
       imageBuffer: req.file.buffer,
       moduleId,
       course,
       focus,
       feedbackMode,
-    });
+    }));
 
     // Log de consumo (best-effort).
     try {

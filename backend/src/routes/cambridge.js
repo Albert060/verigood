@@ -3,6 +3,8 @@ const multer = require('multer');
 const { authenticate, requireModule } = require('../middleware/auth');
 const { generateExam, saveExam } = require('../services/examGeneratorService');
 const { processExamImage } = require('../services/ocrCorrectorService');
+const { runWithApiKey } = require('../services/claudeService');
+const { resolveOrgApiKey } = require('../utils/orgApiKey');
 const { generateDynamics } = require('../services/dynamicsService');
 const { generatePresentation } = require('../services/presentationsService');
 const { query } = require('../config/database');
@@ -45,14 +47,15 @@ router.post('/exams/generate', authenticate, requireModule('cambridge'), async (
       return res.status(400).json({ error: 'Selecciona al menos un tipo de ejercicio' });
     }
 
-    const exam = await generateExam({
+    const orgApiKey = await resolveOrgApiKey(req.user.organization_id);
+    const exam = await runWithApiKey(orgApiKey, () => generateExam({
       level,
       topic,
       exerciseTypes,
       totalQuestions: Math.min(parseInt(totalQuestions), 40),
       source,
       orgId: req.user.organization_id,
-    });
+    }));
 
     await logUsage(req.user.id, req.user.organization_id, 'cambridge', 'exam_generate', exam.aiCount * 200);
 
@@ -162,12 +165,13 @@ router.post('/ocr/correct', authenticate, requireModule('cambridge'), upload.sin
 
     const { certification = 'PET', level = 'B1', feedbackMode = 'full' } = req.body;
 
-    const result = await processExamImage({
+    const orgApiKey = await resolveOrgApiKey(req.user.organization_id);
+    const result = await runWithApiKey(orgApiKey, () => processExamImage({
       imageBuffer: req.file.buffer,
       certification,
       level,
       feedbackMode,
-    });
+    }));
 
     await logUsage(req.user.id, req.user.organization_id, 'cambridge', 'ocr_correct', 800);
 

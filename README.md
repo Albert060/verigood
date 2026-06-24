@@ -771,13 +771,12 @@ Base URL: `https://verigood.es/api` (producción) · `http://localhost:3001/api`
 | POST | `/cambridge/presentations/generate` | Prompt NotebookLM |
 | **Stripe / Facturación** | | |
 | GET | `/stripe/plans` | Planes disponibles |
-| POST | `/stripe/checkout` | Crear sesión de pago (cambio/alta de plan) |
-| POST | `/stripe/portal` | Portal de pago oficial de Stripe |
-| GET | `/stripe/status` | `configured` + `plan` + `hasCustomer` + `subscription` |
-| POST | `/stripe/subscription/cancel` | Cancela al final del periodo (cancel_at_period_end) |
-| POST | `/stripe/subscription/resume` | Revierte cancelación programada |
 | GET | `/stripe/invoices` | Histórico (Stripe real con fallback fixture) |
 | GET | `/stripe/invoices/:id` | Detalle de una factura |
+| **Anthropic (clave por organización)** | | |
+| GET | `/organizations/:orgId/anthropic` | Estado (sin secreto) |
+| PUT | `/organizations/:orgId/anthropic` | Guarda y verifica la clave (admin) |
+| DELETE | `/organizations/:orgId/anthropic` | Desactiva (vuelve a demo) |
 | POST | `/stripe/webhook` | Raw body (registrado ANTES de express.json) |
 | **PDF** | | |
 | POST | `/pdf/render` | Binario `application/pdf` (type + data) |

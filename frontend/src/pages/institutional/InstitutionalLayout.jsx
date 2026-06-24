@@ -18,6 +18,7 @@ const ADMIN_ITEMS = [
   { to: '/dashboard/resources', label: 'Biblioteca', icon: '▤' },
   { to: '/dashboard/stats', label: 'Estadísticas', icon: '▥' },
   { to: '/dashboard/billing', label: 'Facturación', icon: '₪' },
+  { to: '/dashboard/anthropic', label: 'Configurar IA', icon: '◉' },
 ];
 
 export default function InstitutionalLayout() {

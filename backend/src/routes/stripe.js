@@ -1,9 +1,8 @@
 const express = require('express');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 const { query } = require('../config/database');
 const { notifyRole, TYPES: NOTIF_TYPES } = require('../services/notifyService');
-const { stripeAvailable } = require('../utils/stripeAvailable');
 
 const router = express.Router();
 
@@ -31,50 +30,6 @@ const PLANS = {
 // GET /stripe/plans
 router.get('/plans', (req, res) => {
   res.json({ plans: PLANS });
-});
-
-// POST /stripe/checkout — create checkout session
-router.post('/checkout', authenticate, async (req, res) => {
-  try {
-    const { plan } = req.body;
-    if (!PLANS[plan]) return res.status(400).json({ error: 'Plan no válido' });
-
-    const orgResult = await query('SELECT stripe_customer_id FROM organizations WHERE id = $1', [
-      req.user.organization_id,
-    ]);
-    const org = orgResult.rows[0];
-
-    let customerId = org?.stripe_customer_id;
-
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: req.user.email,
-        name: req.user.org_name,
-        metadata: { orgId: req.user.organization_id },
-      });
-      customerId = customer.id;
-      await query('UPDATE organizations SET stripe_customer_id = $1 WHERE id = $2', [
-        customerId,
-        req.user.organization_id,
-      ]);
-    }
-
-    const session = await stripe.checkout.sessions.create({
-      customer: customerId,
-      payment_method_types: ['card'],
-      line_items: [{ price: PLANS[plan].priceId, quantity: 1 }],
-      mode: 'subscription',
-      success_url: `${process.env.FRONTEND_URL}/billing?success=true`,
-      cancel_url: `${process.env.FRONTEND_URL}/billing?cancelled=true`,
-      metadata: { orgId: req.user.organization_id, plan },
-      locale: 'es',
-    });
-
-    res.json({ url: session.url });
-  } catch (err) {
-    console.error('checkout error:', err);
-    res.status(500).json({ error: 'Error al crear sesión de pago' });
-  }
 });
 
 // Helper compartido entre GET /invoices y GET /invoices/:id. Si la org tiene
@@ -210,200 +165,11 @@ router.get('/invoices/:id', authenticate, async (req, res) => {
   }
 });
 
-// POST /stripe/portal — billing portal (gestiona pago dentro del portal oficial)
-router.post('/portal', authenticate, async (req, res) => {
-  try {
-    if (!stripeAvailable()) {
-      return res.status(503).json({
-        error: 'Stripe no está configurado en este entorno',
-        code: 'STRIPE_NOT_CONFIGURED',
-      });
-    }
-    const orgResult = await query('SELECT stripe_customer_id FROM organizations WHERE id = $1', [
-      req.user.organization_id,
-    ]);
-    const customerId = orgResult.rows[0]?.stripe_customer_id;
-
-    if (!customerId) {
-      return res.status(409).json({
-        error: 'Este centro aún no tiene suscripción activa. Suscríbete a un plan antes de gestionar el método de pago.',
-        code: 'NO_CUSTOMER',
-      });
-    }
-
-    const session = await stripe.billingPortal.sessions.create({
-      customer: customerId,
-      return_url: `${process.env.FRONTEND_URL}/dashboard/billing`,
-    });
-
-    res.json({ url: session.url });
-  } catch (err) {
-    console.error('portal error:', err);
-    res.status(500).json({ error: 'Error al abrir el portal de facturación' });
-  }
-});
-
-// GET /stripe/status — info de Stripe para la org del usuario
-// Sirve al frontend para saber si Stripe está configurado, si el centro
-// ya tiene customer, qué plan tiene y si la suscripción está marcada para
-// cancelarse al final del periodo.
-router.get('/status', authenticate, async (req, res) => {
-  try {
-    const orgResult = await query(
-      `SELECT id, name, plan, stripe_customer_id FROM organizations WHERE id = $1`,
-      [req.user.organization_id]
-    );
-    const org = orgResult.rows[0];
-    if (!org) return res.status(404).json({ error: 'Organización no encontrada' });
-
-    const baseline = {
-      configured: stripeAvailable(),
-      plan: org.plan,
-      hasCustomer: !!org.stripe_customer_id,
-      subscription: null,
-    };
-
-    if (!baseline.configured || !org.stripe_customer_id) {
-      return res.json(baseline);
-    }
-
-    // Si Stripe está activo y la org tiene customer, intentamos leer la
-    // suscripción activa para saber estado y cancel_at_period_end.
-    try {
-      const subs = await stripe.subscriptions.list({
-        customer: org.stripe_customer_id,
-        status: 'all',
-        limit: 5,
-      });
-      const sub = subs.data.find((s) => ['active', 'trialing', 'past_due'].includes(s.status)) || subs.data[0];
-      if (sub) {
-        baseline.subscription = {
-          id: sub.id,
-          status: sub.status,
-          cancel_at_period_end: sub.cancel_at_period_end,
-          current_period_end: sub.current_period_end
-            ? new Date(sub.current_period_end * 1000).toISOString()
-            : null,
-        };
-      }
-    } catch (stripeErr) {
-      // El frontend igualmente funciona sin la suscripción; lo logueamos.
-      console.warn('stripe.subscriptions.list failed:', stripeErr.message);
-    }
-
-    res.json(baseline);
-  } catch (err) {
-    console.error('stripe status error:', err);
-    res.status(500).json({ error: 'Error al obtener el estado de facturación' });
-  }
-});
-
-// POST /stripe/subscription/cancel — cancelación al final del periodo
-// Política conservadora: marcamos cancel_at_period_end=true para que el
-// centro mantenga acceso hasta la fecha ya facturada. La cancelación dura
-// (`stripe.subscriptions.cancel`) la hace el webhook customer.subscription.deleted.
-router.post(
-  '/subscription/cancel',
-  authenticate,
-  authorize('admin_centro', 'superadmin'),
-  async (req, res) => {
-    try {
-      if (!stripeAvailable()) {
-        return res.status(503).json({
-          error: 'Stripe no está configurado en este entorno',
-          code: 'STRIPE_NOT_CONFIGURED',
-        });
-      }
-      const orgResult = await query(
-        `SELECT stripe_customer_id FROM organizations WHERE id = $1`,
-        [req.user.organization_id]
-      );
-      const customerId = orgResult.rows[0]?.stripe_customer_id;
-      if (!customerId) {
-        return res.status(409).json({
-          error: 'Este centro no tiene suscripción activa',
-          code: 'NO_CUSTOMER',
-        });
-      }
-
-      const subs = await stripe.subscriptions.list({
-        customer: customerId,
-        status: 'active',
-        limit: 1,
-      });
-      const sub = subs.data[0];
-      if (!sub) {
-        return res.status(409).json({
-          error: 'No hay ninguna suscripción activa que cancelar',
-          code: 'NO_ACTIVE_SUBSCRIPTION',
-        });
-      }
-
-      const updated = await stripe.subscriptions.update(sub.id, {
-        cancel_at_period_end: true,
-      });
-
-      res.json({
-        ok: true,
-        subscription: {
-          id: updated.id,
-          status: updated.status,
-          cancel_at_period_end: updated.cancel_at_period_end,
-          current_period_end: updated.current_period_end
-            ? new Date(updated.current_period_end * 1000).toISOString()
-            : null,
-        },
-      });
-    } catch (err) {
-      console.error('cancel subscription error:', err);
-      res.status(500).json({ error: 'Error al cancelar la suscripción' });
-    }
-  }
-);
-
-// POST /stripe/subscription/resume — revierte la cancelación programada
-router.post(
-  '/subscription/resume',
-  authenticate,
-  authorize('admin_centro', 'superadmin'),
-  async (req, res) => {
-    try {
-      if (!stripeAvailable()) {
-        return res.status(503).json({
-          error: 'Stripe no está configurado en este entorno',
-          code: 'STRIPE_NOT_CONFIGURED',
-        });
-      }
-      const orgResult = await query(
-        `SELECT stripe_customer_id FROM organizations WHERE id = $1`,
-        [req.user.organization_id]
-      );
-      const customerId = orgResult.rows[0]?.stripe_customer_id;
-      if (!customerId) {
-        return res.status(409).json({ error: 'Este centro no tiene suscripción', code: 'NO_CUSTOMER' });
-      }
-      const subs = await stripe.subscriptions.list({
-        customer: customerId,
-        status: 'all',
-        limit: 5,
-      });
-      const sub = subs.data.find((s) => s.cancel_at_period_end);
-      if (!sub) {
-        return res.status(409).json({
-          error: 'No hay cancelación programada que revertir',
-          code: 'NOT_CANCELLING',
-        });
-      }
-      const updated = await stripe.subscriptions.update(sub.id, {
-        cancel_at_period_end: false,
-      });
-      res.json({ ok: true, subscriptionId: updated.id });
-    } catch (err) {
-      console.error('resume subscription error:', err);
-      res.status(500).json({ error: 'Error al reactivar la suscripción' });
-    }
-  }
-);
+// (Endpoints de gestión de suscripción eliminados — checkout, portal,
+//  status, subscription/cancel, subscription/resume. El cliente activa la IA
+//  con su propia clave de Anthropic vía /api/organizations/:orgId/anthropic.
+//  Solo quedan plans, invoices y webhook para mostrar histórico y recibir
+//  eventos de Stripe en caso de integraciones futuras.)
 
 // POST /stripe/webhook
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {

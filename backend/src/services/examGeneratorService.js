@@ -1,4 +1,4 @@
-const { callClaudeJSON } = require('./claudeService');
+const { callClaudeJSON, resolveApiKey } = require('./claudeService');
 const { query } = require('../config/database');
 const { aiAvailable } = require('../utils/aiAvailable');
 const fixtures = require('./demoFixtures');
@@ -44,7 +44,7 @@ const generateExam = async ({ level, topic, exerciseTypes, totalQuestions, sourc
   let demoMode = false;
 
   if (remaining > 0) {
-    if (aiAvailable()) {
+    if (aiAvailable(resolveApiKey())) {
       const typesToGenerate = exerciseTypes.slice(0, 3);
       const typeNames = typesToGenerate.map((t) => EXERCISE_TYPES[t] || t).join(', ');
 

@@ -210,13 +210,15 @@ export const medioApi = {
 // ── Stripe ───────────────────────────────────────────────────
 export const stripeApi = {
   getPlans: () => api.get('/stripe/plans'),
-  checkout: (plan) => api.post('/stripe/checkout', { plan }),
-  portal: () => api.post('/stripe/portal'),
   getInvoices: () => api.get('/stripe/invoices'),
   getInvoice: (id) => api.get(`/stripe/invoices/${id}`),
-  status: () => api.get('/stripe/status'),
-  cancelSubscription: () => api.post('/stripe/subscription/cancel'),
-  resumeSubscription: () => api.post('/stripe/subscription/resume'),
+};
+
+// ── Anthropic (clave por organización) ───────────────────────
+export const anthropicApi = {
+  getStatus: (orgId) => api.get(`/organizations/${orgId}/anthropic`),
+  setKey:    (orgId, apiKey) => api.put(`/organizations/${orgId}/anthropic`, { apiKey }),
+  clear:     (orgId) => api.delete(`/organizations/${orgId}/anthropic`),
 };
 
 // ── PDF / Demo status ────────────────────────────────────────
