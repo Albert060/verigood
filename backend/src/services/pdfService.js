@@ -1028,6 +1028,162 @@ const renderInvoice = (doc, data, { title, subtitle, accent, moduleKey }) => {
   );
 };
 
+// ── Global billing report (superadmin) ───────────────────────
+// Renderiza un informe ejecutivo de facturación global del SaaS.
+// data = {
+//   period: 'monthly' | 'yearly',
+//   periodLabel: string,
+//   generatedAt: ISO string,
+//   mrr_eur: number,
+//   arr_eur: number,
+//   active_orgs: number,
+//   total_orgs: number,
+//   planBreakdown: [{ plan, count }],
+//   planPrices: { starter, colegio, enterprise },
+//   series: [{ bucket, value, active_orgs }],  // value en EUR (MRR o ARR según period)
+//   invoices: [{ issued_at, org_name, plan, amount_eur, status, source }],
+// }
+const renderGlobalBilling = (doc, data, { title, subtitle }) => {
+  const isYearly = data.period === 'yearly';
+  drawHeader(doc, {
+    title: title || (isYearly ? 'Facturación global — Anual' : 'Facturación global — Mensual'),
+    subtitle: subtitle || `${data.periodLabel || ''}`,
+    accent: COLOR.marino,
+  });
+
+  const fmtEur = (v) => `${Number(v || 0).toLocaleString('es-ES')} €`;
+  const fmtDate = (iso) => {
+    if (!iso) return '—';
+    try { return new Date(iso).toLocaleDateString('es-ES'); } catch { return '—'; }
+  };
+
+  // Cabecera: fecha de emisión + periodo
+  doc.fillColor(COLOR.marronSoft).font('Helvetica').fontSize(10)
+    .text(`Emitido: ${fmtDate(data.generatedAt)}`, { continued: true })
+    .text(`     Vista: ${isYearly ? 'Anual' : 'Mensual'}`, { align: 'right' });
+  doc.moveDown(0.8);
+
+  // KPIs en grid 2x2 simulado con texto
+  sectionLabel(doc, 'Indicadores globales');
+  const kpis = [
+    ['MRR actual',     fmtEur(data.mrr_eur)],
+    ['ARR estimado',   fmtEur(data.arr_eur)],
+    ['Orgs activas',   `${data.active_orgs ?? 0} / ${data.total_orgs ?? 0}`],
+    ['Facturas',       String((data.invoices || []).length)],
+  ];
+  const leftX = doc.page.margins.left;
+  const colW = (doc.page.width - leftX - doc.page.margins.right) / 2;
+  let yTop = doc.y;
+  kpis.forEach(([label, value], i) => {
+    const x = leftX + (i % 2) * colW;
+    const y = yTop + Math.floor(i / 2) * 50;
+    doc.fillColor(COLOR.marronSoft).font('Helvetica').fontSize(8).text(label.toUpperCase(), x, y, { characterSpacing: 1.2 });
+    doc.fillColor(COLOR.tinta).font('Helvetica-Bold').fontSize(18).text(value, x, y + 12);
+  });
+  doc.y = yTop + 110;
+
+  // Serie temporal como mini-tabla
+  sectionLabel(doc, isYearly ? 'Evolución anual (ARR)' : 'Evolución mensual (MRR)');
+  const series = data.series || [];
+  if (series.length === 0) {
+    paragraph(doc, 'Sin datos en el periodo.');
+  } else {
+    const max = Math.max(...series.map((s) => Number(s.value) || 0), 1);
+    series.forEach((s) => {
+      const v = Number(s.value) || 0;
+      const barW = Math.round((v / max) * 240);
+      const y0 = doc.y;
+      doc.fillColor(COLOR.marronSoft).font('Helvetica').fontSize(10)
+        .text(String(s.bucket), leftX, y0, { width: 70, lineBreak: false });
+      doc.save();
+      doc.rect(leftX + 80, y0 + 2, barW, 10).fill(COLOR.marino);
+      doc.restore();
+      doc.fillColor(COLOR.tinta).font('Helvetica-Bold').fontSize(10)
+        .text(fmtEur(v), leftX + 340, y0, { width: 100, lineBreak: false });
+      doc.fillColor(COLOR.marronSoft).font('Helvetica').fontSize(9)
+        .text(`${s.active_orgs ?? 0} orgs`, leftX + 450, y0, { lineBreak: false });
+      doc.y = y0 + 16;
+    });
+  }
+  doc.moveDown(0.5);
+
+  // Plan breakdown
+  sectionLabel(doc, 'Distribución por plan');
+  const breakdown = data.planBreakdown || [];
+  if (breakdown.length === 0) {
+    paragraph(doc, 'Sin organizaciones activas.');
+  } else {
+    breakdown.forEach((row) => {
+      const price = (data.planPrices || {})[row.plan] || 0;
+      const total = price * Number(row.count || 0);
+      const y0 = doc.y;
+      doc.fillColor(COLOR.tinta).font('Helvetica-Bold').fontSize(11)
+        .text((row.plan || '').toUpperCase(), leftX, y0, { width: 120, lineBreak: false });
+      doc.fillColor(COLOR.marronSoft).font('Helvetica').fontSize(10)
+        .text(`${row.count} orgs`, leftX + 130, y0, { width: 80, lineBreak: false })
+        .text(price ? `${fmtEur(price)} / mes` : 'precio a medida', leftX + 210, y0, { width: 140, lineBreak: false });
+      doc.fillColor(COLOR.tinta).font('Helvetica-Bold').fontSize(11)
+        .text(price ? `${fmtEur(total)} / mes` : '—', leftX + 360, y0, { lineBreak: false, align: 'right', width: 130 });
+      doc.y = y0 + 16;
+    });
+  }
+  doc.moveDown(0.8);
+
+  // Tabla de facturas
+  sectionLabel(doc, 'Facturas del periodo');
+  const invoices = (data.invoices || []).slice(0, 60);
+  if (invoices.length === 0) {
+    paragraph(doc, 'Sin facturas registradas en el periodo.');
+    return;
+  }
+
+  // Cabecera de tabla
+  const headers = ['Fecha', 'Organización', 'Plan', 'Importe', 'Estado'];
+  const colXs = [leftX, leftX + 75, leftX + 260, leftX + 340, leftX + 430];
+  doc.fillColor(COLOR.marronSoft).font('Helvetica-Bold').fontSize(9);
+  headers.forEach((h, i) => doc.text(h.toUpperCase(), colXs[i], doc.y, { lineBreak: false, characterSpacing: 1 }));
+  doc.moveDown(0.4);
+  doc.save();
+  doc.moveTo(leftX, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y)
+    .lineWidth(0.5).strokeColor(COLOR.linea).stroke();
+  doc.restore();
+  doc.moveDown(0.3);
+
+  let totalPeriod = 0;
+  invoices.forEach((inv) => {
+    if (doc.y > doc.page.height - 100) {
+      doc.addPage();
+    }
+    const y0 = doc.y;
+    const amount = Number(inv.amount_eur || 0);
+    if (inv.status === 'paid') totalPeriod += amount;
+    doc.fillColor(COLOR.marronSoft).font('Helvetica').fontSize(9)
+      .text(fmtDate(inv.issued_at), colXs[0], y0, { width: 70, lineBreak: false });
+    doc.fillColor(COLOR.tinta).font('Helvetica').fontSize(10)
+      .text(String(inv.org_name || '—'), colXs[1], y0, { width: 180, lineBreak: false, ellipsis: true });
+    doc.fillColor(COLOR.marronSoft).font('Helvetica').fontSize(9)
+      .text(String(inv.plan || '').toUpperCase(), colXs[2], y0, { width: 75, lineBreak: false });
+    doc.fillColor(COLOR.tinta).font('Helvetica-Bold').fontSize(10)
+      .text(fmtEur(amount), colXs[3], y0, { width: 85, lineBreak: false });
+    doc.fillColor(inv.status === 'paid' ? COLOR.verde : COLOR.granate).font('Helvetica-Bold').fontSize(9)
+      .text(inv.status === 'paid' ? 'PAGADA' : 'PENDIENTE', colXs[4], y0, { lineBreak: false });
+    doc.y = y0 + 14;
+  });
+
+  // Total cobrado
+  doc.moveDown(0.6);
+  doc.save();
+  doc.moveTo(leftX, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y)
+    .lineWidth(0.6).strokeColor(COLOR.linea).stroke();
+  doc.restore();
+  doc.moveDown(0.3);
+  const y1 = doc.y;
+  doc.fillColor(COLOR.marronSoft).font('Helvetica-Bold').fontSize(10)
+    .text('TOTAL COBRADO EN EL PERIODO', leftX, y1, { lineBreak: false, characterSpacing: 1 });
+  doc.fillColor(COLOR.tinta).font('Helvetica-Bold').fontSize(13)
+    .text(fmtEur(totalPeriod), 0, y1 - 2, { align: 'right', width: doc.page.width - doc.page.margins.right });
+};
+
 // Generic JSON dump (last-resort, but pretty)
 const renderJSON = (doc, data, { title, subtitle, accent }) => {
   drawHeader(doc, { title: title || 'Documento', subtitle, accent: accent || COLOR.marino });
@@ -1097,6 +1253,9 @@ const buildPdf = ({ type, data, title, subtitle, moduleKey }) =>
         // Facturación
         case 'invoice':
           renderInvoice(doc, data, opts);
+          break;
+        case 'global_billing':
+          renderGlobalBilling(doc, data, opts);
           break;
 
         default:

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { superadminApi } from '../../services/api';
+import { superadminApi, pdfApi } from '../../services/api';
 import { PageHeader, StatCard, SectionLabel, Badge } from '../../components/ui';
 
 const PLAN_LABEL = { starter: 'Starter', colegio: 'Colegio', enterprise: 'Enterprise' };
@@ -20,14 +20,100 @@ function formatEUR(value) {
 
 export default function SuperadminBilling() {
   const [period, setPeriod] = useState('monthly');
+  const [downloading, setDownloading] = useState(null);
+  // scope: 'global' = todos los centros; o un orgId concreto para vista por colegio.
+  const [scope, setScope] = useState('global');
 
-  const { data, isLoading } = useQuery({
+  // Datos globales — siempre se cargan; alimentan el selector de colegio.
+  const { data: globalData, isLoading: loadingGlobal } = useQuery({
     queryKey: ['superadmin-billing'],
     queryFn: () => superadminApi.getBilling().then((r) => r.data),
     staleTime: 60_000,
     refetchInterval: 120_000,
     refetchOnWindowFocus: true,
   });
+
+  // Datos por organización — solo si el superadmin elige un colegio concreto.
+  const { data: orgData, isLoading: loadingOrg } = useQuery({
+    queryKey: ['superadmin-billing-org', scope],
+    queryFn: () => superadminApi.getOrgBilling(scope).then((r) => r.data),
+    enabled: scope !== 'global',
+    staleTime: 60_000,
+  });
+
+  const isGlobal = scope === 'global';
+  const data = isGlobal ? globalData : orgData;
+  const isLoading = isGlobal ? loadingGlobal : loadingOrg;
+
+  // Catálogo de orgs para el selector (deriva de los datos globales).
+  const orgsCatalog = useMemo(() => {
+    const seen = new Map();
+    (globalData?.invoices || []).forEach((inv) => {
+      if (!seen.has(inv.org_id)) {
+        seen.set(inv.org_id, { id: inv.org_id, name: inv.org_name, plan: inv.plan });
+      }
+    });
+    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }, [globalData]);
+
+  // Descarga informe global del periodo elegido. Reusa /api/pdf/render con
+  // type='global_billing'. Para 'monthly' acota las facturas al mes en curso
+  // (date_trunc('month', NOW())); para 'yearly' a las del año en curso. La
+  // serie se mantiene completa (12 meses / 3 años) para dar contexto.
+  const handleDownload = async (kind) => {
+    if (!data || downloading) return;
+    setDownloading(kind);
+    try {
+      const now = new Date();
+      const periodLabel = kind === 'monthly'
+        ? now.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+        : String(now.getFullYear());
+
+      const series = kind === 'monthly'
+        ? (data.monthlySeries || []).map((s) => ({
+            bucket: s.bucket, value: s.mrr_eur, active_orgs: s.active_orgs,
+          }))
+        : (data.yearlySeries || []).map((s) => ({
+            bucket: s.bucket, value: s.arr_eur, active_orgs: s.active_orgs,
+          }));
+
+      // Acotar facturas al periodo.
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startOfYear  = new Date(now.getFullYear(), 0, 1);
+      const cutoff = kind === 'monthly' ? startOfMonth : startOfYear;
+      const invoices = (data.invoices || []).filter((inv) => new Date(inv.issued_at) >= cutoff);
+
+      const orgName = isGlobal ? null : data?.org?.name;
+      const slug = (s) => String(s || 'verigood').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40);
+      const title = isGlobal
+        ? (kind === 'monthly' ? 'Facturación global · Mensual' : 'Facturación global · Anual')
+        : (kind === 'monthly' ? `Facturación · ${orgName} · Mensual` : `Facturación · ${orgName} · Anual`);
+
+      await pdfApi.download({
+        type: 'global_billing',
+        data: {
+          period: kind,
+          periodLabel: orgName ? `${orgName} — ${periodLabel}` : periodLabel,
+          generatedAt: now.toISOString(),
+          mrr_eur: data.mrr_eur,
+          arr_eur: data.arr_eur,
+          active_orgs: data.active_orgs,
+          total_orgs: data.total_orgs,
+          planBreakdown: data.planBreakdown,
+          planPrices: data.planPrices,
+          series,
+          invoices,
+        },
+        title,
+        subtitle: orgName ? `${orgName} — ${periodLabel}` : periodLabel,
+        filename: `verigood_facturacion_${isGlobal ? 'global' : slug(orgName)}_${kind === 'monthly' ? 'mensual' : 'anual'}_${now.getFullYear()}${kind === 'monthly' ? `-${String(now.getMonth() + 1).padStart(2, '0')}` : ''}`,
+      });
+    } catch (err) {
+      console.error('PDF download failed', err);
+    } finally {
+      setDownloading(null);
+    }
+  };
 
   const series = period === 'monthly'
     ? (data?.monthlySeries || [])
@@ -51,7 +137,63 @@ export default function SuperadminBilling() {
 
   return (
     <div className="animate-slide-in">
-      <PageHeader title="Facturación global" subtitle="INGRESOS · MRR / ARR" romanNum="§ III" />
+      <PageHeader
+        title={isGlobal ? 'Facturación global' : `Facturación · ${data?.org?.name || ''}`}
+        subtitle={isGlobal ? 'INGRESOS · MRR / ARR · TODOS LOS COLEGIOS' : 'INGRESOS DEL CENTRO · MRR / ARR'}
+        romanNum="§ III"
+      />
+
+      {/* Selector de ámbito: global vs colegio concreto */}
+      <div className="bg-card-bg border border-linea shadow-card p-3 mb-5 flex items-center gap-3 flex-wrap">
+        <SectionLabel className="mb-0">ÁMBITO</SectionLabel>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setScope('global')}
+            className={`font-mono text-[10px] px-2 py-1 border transition-colors ${
+              isGlobal
+                ? 'border-marino bg-marino text-papel'
+                : 'border-linea text-marron-soft hover:text-tinta'
+            }`}
+          >
+            GLOBAL
+          </button>
+          <button
+            onClick={() => {
+              if (orgsCatalog[0]) setScope(orgsCatalog[0].id);
+            }}
+            disabled={orgsCatalog.length === 0}
+            className={`font-mono text-[10px] px-2 py-1 border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              !isGlobal
+                ? 'border-marino bg-marino text-papel'
+                : 'border-linea text-marron-soft hover:text-tinta'
+            }`}
+          >
+            POR COLEGIO
+          </button>
+        </div>
+        {!isGlobal && (
+          <select
+            value={scope}
+            onChange={(e) => setScope(e.target.value)}
+            className="px-3 py-1.5 bg-papel border border-linea font-mono text-[12px] text-tinta focus:outline-none focus:border-marino"
+          >
+            {orgsCatalog.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name} ({(o.plan || 'starter').toUpperCase()})
+              </option>
+            ))}
+          </select>
+        )}
+        <span className="font-mono text-[10px] text-marron-soft ml-auto">
+          {isGlobal
+            ? `${globalData?.active_orgs ?? 0} de ${globalData?.total_orgs ?? 0} centros activos`
+            : data?.org?.is_active === false
+              ? 'CENTRO SUSPENDIDO'
+              : data?.org?.plan
+                ? `Plan ${(data.org.plan || '').toUpperCase()}`
+                : ''}
+        </span>
+      </div>
 
       <div className="grid grid-cols-4 gap-3 mb-6">
         <StatCard
@@ -66,39 +208,76 @@ export default function SuperadminBilling() {
           value={isLoading ? '—' : formatEUR(data?.arr_eur)}
           mono={false}
         />
-        <StatCard
-          label="ORGS ACTIVAS"
-          value={isLoading ? '—' : `${data?.active_orgs ?? 0} / ${data?.total_orgs ?? 0}`}
-        />
-        <StatCard
-          label="FACTURAS / 6 MESES"
-          value={isLoading ? '—' : invoices.length}
-        />
+        {isGlobal ? (
+          <StatCard
+            label="ORGS ACTIVAS"
+            value={isLoading ? '—' : `${data?.active_orgs ?? 0} / ${data?.total_orgs ?? 0}`}
+          />
+        ) : (
+          <StatCard
+            label="USO / MES"
+            value={isLoading ? '—' : (data?.usage?.monthly_calls ?? 0).toLocaleString('es-ES')}
+            delta={data?.usage?.active_teachers_month != null ? `${data.usage.active_teachers_month} profes activos` : null}
+          />
+        )}
+        {isGlobal ? (
+          <StatCard
+            label="FACTURAS"
+            value={isLoading ? '—' : invoices.length}
+          />
+        ) : (
+          <StatCard
+            label="COBRADO / PENDIENTE"
+            value={isLoading ? '—' : formatEUR(data?.totals?.paid_eur)}
+            delta={data?.totals?.pending_eur ? `${formatEUR(data.totals.pending_eur)} pendiente` : 'todo al día'}
+            mono={false}
+          />
+        )}
       </div>
 
       {/* Serie temporal */}
       <div className="bg-card-bg border border-linea shadow-card card-fold p-5 mb-5">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
           <SectionLabel className="mb-0">
             {period === 'monthly' ? 'EVOLUCIÓN MRR — ÚLTIMOS 12 MESES' : 'EVOLUCIÓN ARR — ÚLTIMOS 3 AÑOS'}
           </SectionLabel>
-          <div className="flex items-center gap-1">
-            {[
-              { key: 'monthly', label: 'MES' },
-              { key: 'yearly',  label: 'AÑO' },
-            ].map((opt) => (
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1">
+              {[
+                { key: 'monthly', label: 'MES' },
+                { key: 'yearly',  label: 'AÑO' },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => setPeriod(opt.key)}
+                  className={`font-mono text-[10px] px-2 py-1 border transition-colors ${
+                    period === opt.key
+                      ? 'border-marino bg-marino text-papel'
+                      : 'border-linea text-marron-soft hover:text-tinta'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1 border-l border-linea pl-3">
               <button
-                key={opt.key}
-                onClick={() => setPeriod(opt.key)}
-                className={`font-mono text-[10px] px-2 py-1 border transition-colors ${
-                  period === opt.key
-                    ? 'border-marino bg-marino text-papel'
-                    : 'border-linea text-marron-soft hover:text-tinta'
-                }`}
+                onClick={() => handleDownload('monthly')}
+                disabled={!data || downloading === 'monthly'}
+                className="font-mono text-[10px] px-2 py-1 border border-marino text-marino hover:bg-marino hover:text-papel disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                title="Descargar informe del mes en curso"
               >
-                {opt.label}
+                {downloading === 'monthly' ? 'GENERANDO…' : 'PDF MENSUAL'}
               </button>
-            ))}
+              <button
+                onClick={() => handleDownload('yearly')}
+                disabled={!data || downloading === 'yearly'}
+                className="font-mono text-[10px] px-2 py-1 border border-marino text-marino hover:bg-marino hover:text-papel disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                title="Descargar informe del año en curso"
+              >
+                {downloading === 'yearly' ? 'GENERANDO…' : 'PDF ANUAL'}
+              </button>
+            </div>
           </div>
         </div>
 

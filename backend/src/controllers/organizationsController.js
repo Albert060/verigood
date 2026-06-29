@@ -577,6 +577,131 @@ const getSuperadminBilling = async (req, res) => {
   }
 };
 
+// GET /superadmin/billing/:orgId
+// Facturación de una organización concreta — misma forma que getSuperadminBilling
+// pero acotada a esa org. Permite al superadmin generar estadísticas y PDF por
+// centro (mensual o anual).
+const getSuperadminOrgBilling = async (req, res) => {
+  try {
+    const { orgId } = req.params;
+
+    const orgResult = await query(
+      `SELECT id, name, city, plan, is_active, stripe_customer_id, created_at
+         FROM organizations WHERE id = $1`,
+      [orgId]
+    );
+    const org = orgResult.rows[0];
+    if (!org) return res.status(404).json({ error: 'Organización no encontrada' });
+
+    const price = PLAN_PRICE_EUR[org.plan] || 0;
+    const monthlyMrr = org.is_active ? price : 0;
+
+    // Para cada mes de los últimos 12: la org cobró `price` si en ese mes ya
+    // existía y estaba activa. (No tenemos histórico de cancelaciones, así que
+    // el "is_active" actual se proyecta sobre todos los meses posteriores al
+    // alta. Si en el futuro guardas suscripciones reales esto se sustituye.)
+    const [monthlyResult, yearlyResult] = await Promise.all([
+      query(
+        `WITH months AS (
+           SELECT date_trunc('month', NOW()) - (s || ' months')::interval AS month_start
+             FROM generate_series(0, 11) s
+         )
+         SELECT to_char(m.month_start, 'YYYY-MM') AS bucket,
+                CASE
+                  WHEN $2::timestamptz < m.month_start + INTERVAL '1 month' AND $3 = true
+                  THEN ${price}
+                  ELSE 0
+                END::int AS mrr_eur,
+                CASE
+                  WHEN $2::timestamptz < m.month_start + INTERVAL '1 month' AND $3 = true
+                  THEN 1 ELSE 0
+                END::int AS active_orgs
+           FROM months m
+          ORDER BY m.month_start`,
+        [orgId, org.created_at, org.is_active]
+      ),
+      query(
+        `WITH years AS (
+           SELECT date_trunc('year', NOW()) - (s || ' years')::interval AS year_start
+             FROM generate_series(0, 2) s
+         )
+         SELECT to_char(y.year_start, 'YYYY') AS bucket,
+                CASE
+                  WHEN $2::timestamptz < y.year_start + INTERVAL '1 year' AND $3 = true
+                  THEN ${price} * 12
+                  ELSE 0
+                END::int AS arr_eur,
+                CASE
+                  WHEN $2::timestamptz < y.year_start + INTERVAL '1 year' AND $3 = true
+                  THEN 1 ELSE 0
+                END::int AS active_orgs
+           FROM years y
+          ORDER BY y.year_start`,
+        [orgId, org.created_at, org.is_active]
+      ),
+    ]);
+
+    // Estadísticas de uso (mes en curso) reaprovechando usage_logs para que
+    // el informe del centro sea útil más allá del importe puro.
+    const usageResult = await query(
+      `SELECT COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::int AS monthly_calls,
+              COUNT(*) FILTER (WHERE created_at >= date_trunc('year', NOW()))::int    AS yearly_calls,
+              COUNT(DISTINCT user_id) FILTER (WHERE created_at >= date_trunc('month', NOW()))::int AS active_teachers_month
+         FROM usage_logs WHERE organization_id = $1`,
+      [orgId]
+    );
+
+    // Facturas históricas sintéticas (últimos 12 meses). Si en el futuro
+    // ingestas Stripe via webhook, sustituye esto por una query a tu tabla.
+    const today = new Date();
+    const invoices = [];
+    if (price > 0) {
+      for (let i = 0; i < 12; i += 1) {
+        const issuedAt = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        if (issuedAt < new Date(org.created_at)) break;
+        const isCurrent = i === 0;
+        invoices.push({
+          id: `vg_${org.id.slice(0, 8)}_${issuedAt.getFullYear()}_${String(issuedAt.getMonth() + 1).padStart(2, '0')}`,
+          org_id: org.id,
+          org_name: org.name,
+          plan: org.plan,
+          amount_eur: price,
+          status: isCurrent ? 'open' : 'paid',
+          issued_at: issuedAt.toISOString(),
+          source: org.stripe_customer_id ? 'stripe' : 'demo',
+        });
+      }
+    }
+
+    const paidTotal    = invoices.filter((i) => i.status === 'paid').reduce((s, i) => s + i.amount_eur, 0);
+    const pendingTotal = invoices.filter((i) => i.status !== 'paid').reduce((s, i) => s + i.amount_eur, 0);
+
+    res.json({
+      scope: 'organization',
+      org: {
+        id: org.id, name: org.name, city: org.city,
+        plan: org.plan, is_active: org.is_active,
+        stripe_customer_id: org.stripe_customer_id,
+        created_at: org.created_at,
+      },
+      mrr_eur: monthlyMrr,
+      arr_eur: monthlyMrr * 12,
+      active_orgs: org.is_active ? 1 : 0,
+      total_orgs: 1,
+      planPrices: PLAN_PRICE_EUR,
+      planBreakdown: [{ plan: org.plan, count: 1 }],
+      monthlySeries: monthlyResult.rows,
+      yearlySeries:  yearlyResult.rows,
+      invoices,
+      totals: { paid_eur: paidTotal, pending_eur: pendingTotal },
+      usage: usageResult.rows[0] || { monthly_calls: 0, yearly_calls: 0, active_teachers_month: 0 },
+    });
+  } catch (err) {
+    console.error('getSuperadminOrgBilling error:', err);
+    res.status(500).json({ error: 'Error al obtener facturación de la organización' });
+  }
+};
+
 // GET /superadmin/users — listado global paginado, filtros por rol y organización.
 const getSuperadminUsers = async (req, res) => {
   try {
@@ -635,5 +760,6 @@ module.exports = {
   superadminUpdateOrg,
   getSuperadminStats,
   getSuperadminBilling,
+  getSuperadminOrgBilling,
   getSuperadminUsers,
 };
