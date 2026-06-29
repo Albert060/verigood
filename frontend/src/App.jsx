@@ -16,6 +16,7 @@ import SuperadminDashboard from './pages/superadmin/Dashboard';
 import SuperadminOrganizations from './pages/superadmin/Organizations';
 import SuperadminUsers from './pages/superadmin/Users';
 import SuperadminModules from './pages/superadmin/Modules';
+import SuperadminStats from './pages/superadmin/Stats';
 import SuperadminBilling from './pages/superadmin/Billing';
 import SuperadminSystem from './pages/superadmin/System';
 
@@ -125,6 +126,7 @@ export default function App() {
           <Route path="organizations" element={<SuperadminOrganizations />} />
           <Route path="users" element={<SuperadminUsers />} />
           <Route path="modules" element={<SuperadminModules />} />
+          <Route path="stats" element={<SuperadminStats />} />
           <Route path="billing" element={<SuperadminBilling />} />
           <Route path="system" element={<SuperadminSystem />} />
         </Route>

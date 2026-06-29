@@ -374,12 +374,14 @@ const superadminUpdateOrg = async (req, res) => {
 const PLAN_PRICE_EUR = { starter: 29, colegio: 149, enterprise: 0 };
 
 // GET /superadmin/stats
+// Construcción defensiva: cada query corre aislada con Promise.allSettled
+// para que un fallo puntual (migración no aplicada en un entorno, BD vacía,
+// etc.) no devuelva 500 ni vacíe la página entera. Las que fallen se loguean
+// y se sustituyen por valor cero.
 const getSuperadminStats = async (req, res) => {
   try {
-    const [
-      orgsResult, usersResult, usageResult, revenueResult,
-      monthlySeriesResult, yearlySeriesResult, topModulesResult, topOrgsResult,
-    ] = await Promise.all([
+    const safe = (rows, fallback = []) => Array.isArray(rows) ? rows : fallback;
+    const settled = await Promise.allSettled([
       query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE is_active) as active FROM organizations`),
       query(`SELECT COUNT(*) as total FROM users WHERE role != 'superadmin' AND is_active = true`),
       query(
@@ -442,7 +444,127 @@ const getSuperadminStats = async (req, res) => {
           ORDER BY count DESC
           LIMIT 8`
       ),
+      // Top herramientas globales del mes — usa tool_key (catálogo Fase 1).
+      // Para cuando la fila legacy no trae tool_key (Cambridge nativo, módulos
+      // anteriores al catálogo), agrupamos también por action_type como
+      // fallback con etiqueta humana derivada.
+      // GROUP BY posicional (1,2,3,4) porque Postgres no acepta alias derivados
+      // de COALESCE en GROUP BY estricto.
+      query(
+        `SELECT
+            COALESCE(ul.tool_key, ul.action_type) AS tool_key,
+            COALESCE(mt.name, ul.action_type)     AS label,
+            COALESCE(ul.metadata->>'moduleId', ul.module::text) AS module_id,
+            COALESCE(m.name, COALESCE(ul.metadata->>'moduleId', ul.module::text)) AS module_label,
+            COUNT(*)::int AS count
+           FROM usage_logs ul
+           LEFT JOIN module_tools mt ON mt.key = ul.tool_key
+           LEFT JOIN modules m ON m.id = COALESCE(ul.metadata->>'moduleId', ul.module::text)
+          WHERE ul.created_at >= date_trunc('month', NOW())
+            AND COALESCE(ul.tool_key, ul.action_type) IS NOT NULL
+          GROUP BY 1, 2, 3, 4
+          ORDER BY count DESC
+          LIMIT 10`
+      ),
+      // Totales del mes actual vs mes anterior (mismo cálculo que org-stats,
+      // pero sin filtrar por organization_id → agregado de toda la plataforma).
+      query(
+        `SELECT
+           COUNT(*) FILTER (WHERE created_at >= date_trunc('month', NOW()))::int AS current_month,
+           COUNT(*) FILTER (
+             WHERE created_at >= date_trunc('month', NOW()) - INTERVAL '1 month'
+               AND created_at <  date_trunc('month', NOW())
+           )::int AS previous_month
+         FROM usage_logs`
+      ),
+      // Uso semanal del mes en curso (semanas 1..5 según día del mes).
+      query(
+        `SELECT
+           LEAST(5, CEIL(EXTRACT(DAY FROM created_at)::int / 7.0))::int AS week,
+           COUNT(*)::int AS count
+         FROM usage_logs
+         WHERE created_at >= date_trunc('month', NOW())
+         GROUP BY week
+         ORDER BY week`
+      ),
+      // Top profesores del mes en curso a nivel global (incluye nombre de su org).
+      query(
+        `SELECT u.id, u.name, u.email,
+                u.organization_id, o.name AS organization_name,
+                COUNT(*)::int AS total
+           FROM usage_logs ul
+           JOIN users u ON u.id = ul.user_id
+           LEFT JOIN organizations o ON o.id = u.organization_id
+          WHERE ul.created_at >= date_trunc('month', NOW())
+          GROUP BY u.id, u.name, u.email, u.organization_id, o.name
+          ORDER BY total DESC
+          LIMIT 10`
+      ),
     ]);
+
+    const NAMES = [
+      'orgs', 'users', 'usage', 'revenue',
+      'monthlySeries', 'yearlySeries', 'topModules', 'topOrgs',
+      'topTools', 'monthlyTotals', 'weeklyUsage', 'topTeachers',
+    ];
+    const rs = settled.map((s, i) => {
+      if (s.status === 'fulfilled') return s.value;
+      console.error(`getSuperadminStats — query "${NAMES[i]}" failed:`, s.reason?.message || s.reason);
+      return { rows: [] };
+    });
+    const [
+      orgsResult, usersResult, usageResult, revenueResult,
+      monthlySeriesResult, yearlySeriesResult, topModulesResult, topOrgsResult,
+      topToolsResult, monthlyTotalsResult, weeklyUsageResult, topTeachersResult,
+    ] = rs;
+
+    const totals = monthlyTotalsResult.rows[0] || { current_month: 0, previous_month: 0 };
+    const deltaPct = totals.previous_month > 0
+      ? Math.round(((totals.current_month - totals.previous_month) / totals.previous_month) * 100)
+      : null;
+    // Misma heurística que org-stats: cada generación ahorra ~15 min al profe.
+    const hoursSaved = Math.round(totals.current_month * 0.25);
+
+    // Promedios por colegio. El denominador es nº de orgs CON actividad
+    // (un colegio dormido no aplasta el promedio del que sí usa la plataforma).
+    let activity = { month: 0, year: 0, lifetime: 0, total_calls: 0, yearly_calls: 0 };
+    try {
+      const { rows } = await query(
+        `SELECT
+           COUNT(DISTINCT organization_id) FILTER (WHERE created_at >= date_trunc('month', NOW()))::int AS month,
+           COUNT(DISTINCT organization_id) FILTER (WHERE created_at >= date_trunc('year', NOW()))::int  AS year,
+           COUNT(DISTINCT organization_id)::int AS lifetime,
+           COUNT(*)::int AS total_calls,
+           COUNT(*) FILTER (WHERE created_at >= date_trunc('year', NOW()))::int AS yearly_calls
+         FROM usage_logs`
+      );
+      if (rows[0]) activity = rows[0];
+    } catch (err) {
+      console.error('getSuperadminStats — activity aggregate failed:', err.message);
+    }
+
+    const avg = (numerator, denominator) =>
+      denominator > 0 ? Math.round((numerator / denominator) * 10) / 10 : 0;
+
+    const totalActiveOrgs = Number(orgsResult.rows[0]?.active || 0);
+    const totalUsers      = Number(usersResult.rows[0]?.total  || 0);
+
+    const averages = {
+      calls_per_org_month:    avg(totals.current_month,   activity.month),
+      calls_per_org_year:     avg(activity.yearly_calls,  activity.year),
+      calls_per_org_lifetime: avg(activity.total_calls,   activity.lifetime),
+      teachers_per_org:       avg(totalUsers,             totalActiveOrgs),
+      hours_saved_per_org:    avg(hoursSaved,             activity.month),
+      orgs_with_activity_month:    activity.month,
+      orgs_with_activity_year:     activity.year,
+      orgs_with_activity_lifetime: activity.lifetime,
+    };
+
+    const lifetime = {
+      total_calls:  activity.total_calls,
+      yearly_calls: activity.yearly_calls,
+      hours_saved:  Math.round(activity.total_calls * 0.25),
+    };
 
     res.json({
       organizations: orgsResult.rows[0],
@@ -453,6 +575,17 @@ const getSuperadminStats = async (req, res) => {
       yearlySeries:  yearlySeriesResult.rows,   // [{ bucket: 'YYYY', count }]
       topModules:    topModulesResult.rows,     // [{ module_id, label, count }]
       topOrganizations: topOrgsResult.rows,     // [{ id, name, plan, count }]
+      topTools:      topToolsResult.rows,       // [{ tool_key, label, module_id, module_label, count }]
+      monthly: {
+        current_month:  totals.current_month,
+        previous_month: totals.previous_month,
+        delta_pct:      deltaPct,
+        hours_saved:    hoursSaved,
+      },
+      weeklyUsage:  weeklyUsageResult.rows,    // [{ week: 1..5, count }]
+      topTeachers:  topTeachersResult.rows,    // [{ id, name, email, organization_id, organization_name, total }]
+      averages,                                // { calls_per_org_month, calls_per_org_year, ... }
+      lifetime,                                // { total_calls, yearly_calls, hours_saved }
     });
   } catch (err) {
     console.error('getSuperadminStats error:', err);

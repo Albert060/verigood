@@ -7,6 +7,7 @@ const MENU = [
   { to: '/superadmin/organizations', label: 'Organizaciones', icon: '◎' },
   { to: '/superadmin/users', label: 'Usuarios', icon: '☰' },
   { to: '/superadmin/modules', label: 'Módulos', icon: '◫' },
+  { to: '/superadmin/stats', label: 'Estadísticas', icon: '▤' },
   { to: '/superadmin/billing', label: 'Facturación global', icon: '₪' },
   { to: '/superadmin/system', label: 'Sistema', icon: '⚙' },
 ];
