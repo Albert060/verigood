@@ -306,7 +306,13 @@ const getAllOrgs = async (req, res) => {
       `SELECT o.id, o.name, o.city, o.plan, o.active_modules, o.is_active,
               o.stripe_customer_id, o.created_at,
               COUNT(DISTINCT u.id) FILTER (WHERE u.is_active) as active_users,
-              COUNT(DISTINCT ul.id) FILTER (WHERE ul.created_at >= NOW() - INTERVAL '30 days') as monthly_usage
+              COUNT(DISTINCT ul.id) FILTER (WHERE ul.created_at >= NOW() - INTERVAL '30 days') as monthly_usage,
+              COALESCE(
+                (SELECT array_agg(om.module_id ORDER BY om.module_id)
+                   FROM organization_modules om
+                  WHERE om.organization_id = o.id),
+                ARRAY[]::varchar[]
+              ) AS module_ids
        FROM organizations o
        LEFT JOIN users u ON u.organization_id = o.id AND u.role != 'superadmin'
        LEFT JOIN usage_logs ul ON ul.organization_id = o.id
@@ -362,10 +368,18 @@ const superadminUpdateOrg = async (req, res) => {
   }
 };
 
+// Precio mensual por plan en EUROS (espejo de PLANS en routes/stripe.js dividido /100).
+// Lo duplicamos para no acoplar este controller a Stripe; si el catálogo de planes
+// cambia, se actualizan ambos. Enterprise queda a precio nulo: no entra en MRR.
+const PLAN_PRICE_EUR = { starter: 29, colegio: 149, enterprise: 0 };
+
 // GET /superadmin/stats
 const getSuperadminStats = async (req, res) => {
   try {
-    const [orgsResult, usersResult, usageResult, revenueResult] = await Promise.all([
+    const [
+      orgsResult, usersResult, usageResult, revenueResult,
+      monthlySeriesResult, yearlySeriesResult, topModulesResult, topOrgsResult,
+    ] = await Promise.all([
       query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE is_active) as active FROM organizations`),
       query(`SELECT COUNT(*) as total FROM users WHERE role != 'superadmin' AND is_active = true`),
       query(
@@ -376,6 +390,58 @@ const getSuperadminStats = async (req, res) => {
       query(
         `SELECT plan, COUNT(*) as count FROM organizations WHERE is_active = true GROUP BY plan`
       ),
+      // Serie mensual últimos 12 meses (generate_series garantiza meses vacíos).
+      query(
+        `WITH months AS (
+           SELECT date_trunc('month', NOW()) - (s || ' months')::interval AS month_start
+             FROM generate_series(0, 11) s
+         )
+         SELECT to_char(m.month_start, 'YYYY-MM') AS bucket,
+                COUNT(ul.id)::int                  AS count
+           FROM months m
+           LEFT JOIN usage_logs ul
+             ON ul.created_at >= m.month_start
+            AND ul.created_at <  m.month_start + INTERVAL '1 month'
+          GROUP BY m.month_start
+          ORDER BY m.month_start`
+      ),
+      // Serie anual últimos 3 años.
+      query(
+        `WITH years AS (
+           SELECT date_trunc('year', NOW()) - (s || ' years')::interval AS year_start
+             FROM generate_series(0, 2) s
+         )
+         SELECT to_char(y.year_start, 'YYYY') AS bucket,
+                COUNT(ul.id)::int              AS count
+           FROM years y
+           LEFT JOIN usage_logs ul
+             ON ul.created_at >= y.year_start
+            AND ul.created_at <  y.year_start + INTERVAL '1 year'
+          GROUP BY y.year_start
+          ORDER BY y.year_start`
+      ),
+      // Top módulos del mes en curso, agregando cross-org.
+      query(
+        `SELECT COALESCE(ul.metadata->>'moduleId', ul.module::text) AS module_id,
+                COALESCE(m.name, COALESCE(ul.metadata->>'moduleId', ul.module::text)) AS label,
+                COUNT(*)::int AS count
+           FROM usage_logs ul
+           LEFT JOIN modules m ON m.id = COALESCE(ul.metadata->>'moduleId', ul.module::text)
+          WHERE ul.created_at >= date_trunc('month', NOW())
+          GROUP BY module_id, label
+          ORDER BY count DESC
+          LIMIT 8`
+      ),
+      // Top organizaciones por uso del mes en curso.
+      query(
+        `SELECT o.id, o.name, o.plan, COUNT(ul.id)::int AS count
+           FROM organizations o
+           JOIN usage_logs ul ON ul.organization_id = o.id
+          WHERE ul.created_at >= date_trunc('month', NOW())
+          GROUP BY o.id, o.name, o.plan
+          ORDER BY count DESC
+          LIMIT 8`
+      ),
     ]);
 
     res.json({
@@ -383,9 +449,180 @@ const getSuperadminStats = async (req, res) => {
       users: usersResult.rows[0],
       usage: usageResult.rows[0],
       planBreakdown: revenueResult.rows,
+      monthlySeries: monthlySeriesResult.rows,  // [{ bucket: 'YYYY-MM', count }]
+      yearlySeries:  yearlySeriesResult.rows,   // [{ bucket: 'YYYY', count }]
+      topModules:    topModulesResult.rows,     // [{ module_id, label, count }]
+      topOrganizations: topOrgsResult.rows,     // [{ id, name, plan, count }]
     });
   } catch (err) {
+    console.error('getSuperadminStats error:', err);
     res.status(500).json({ error: 'Error al obtener estadísticas' });
+  }
+};
+
+// GET /superadmin/billing
+// MRR real = suma de (orgs activas × precio del plan). Histórico mensual y anual
+// calculado tomando como referencia el conjunto de orgs vivas en cada mes (las
+// que ya existían y siguen activas hoy — proxy suficiente sin tabla de
+// suscripciones histórica). Facturas globales = listado sintético de los últimos
+// 6 meses por org activa, coherente con el plan vigente (mismo modelo que
+// /stripe/invoices a nivel org, pero agregado).
+const getSuperadminBilling = async (req, res) => {
+  try {
+    const [orgsResult, monthlySeriesResult, yearlySeriesResult, planBreakdownResult] = await Promise.all([
+      query(
+        `SELECT id, name, plan, is_active, stripe_customer_id, created_at
+           FROM organizations
+          ORDER BY created_at DESC`
+      ),
+      // Para cada mes de los últimos 12: cuántas orgs activas existían (created_at <= fin de mes).
+      query(
+        `WITH months AS (
+           SELECT date_trunc('month', NOW()) - (s || ' months')::interval AS month_start
+             FROM generate_series(0, 11) s
+         )
+         SELECT to_char(m.month_start, 'YYYY-MM') AS bucket,
+                COALESCE(SUM(
+                  CASE o.plan
+                    WHEN 'starter'    THEN ${PLAN_PRICE_EUR.starter}
+                    WHEN 'colegio'    THEN ${PLAN_PRICE_EUR.colegio}
+                    WHEN 'enterprise' THEN ${PLAN_PRICE_EUR.enterprise}
+                    ELSE 0
+                  END
+                ), 0)::int AS mrr_eur,
+                COUNT(o.id)::int AS active_orgs
+           FROM months m
+           LEFT JOIN organizations o
+             ON o.is_active = true
+            AND o.created_at < m.month_start + INTERVAL '1 month'
+          GROUP BY m.month_start
+          ORDER BY m.month_start`
+      ),
+      query(
+        `WITH years AS (
+           SELECT date_trunc('year', NOW()) - (s || ' years')::interval AS year_start
+             FROM generate_series(0, 2) s
+         )
+         SELECT to_char(y.year_start, 'YYYY') AS bucket,
+                COALESCE(SUM(
+                  CASE o.plan
+                    WHEN 'starter'    THEN ${PLAN_PRICE_EUR.starter}
+                    WHEN 'colegio'    THEN ${PLAN_PRICE_EUR.colegio}
+                    WHEN 'enterprise' THEN ${PLAN_PRICE_EUR.enterprise}
+                    ELSE 0
+                  END
+                ), 0)::int * 12 AS arr_eur,
+                COUNT(o.id)::int AS active_orgs
+           FROM years y
+           LEFT JOIN organizations o
+             ON o.is_active = true
+            AND o.created_at < y.year_start + INTERVAL '1 year'
+          GROUP BY y.year_start
+          ORDER BY y.year_start`
+      ),
+      query(
+        `SELECT plan, COUNT(*)::int AS count
+           FROM organizations
+          WHERE is_active = true
+          GROUP BY plan`
+      ),
+    ]);
+
+    const orgs = orgsResult.rows;
+    const activeOrgs = orgs.filter((o) => o.is_active);
+
+    const mrr = activeOrgs.reduce((sum, o) => sum + (PLAN_PRICE_EUR[o.plan] || 0), 0);
+    const arr = mrr * 12;
+
+    // Facturas globales: por cada org activa, sus últimos 6 meses sintéticos.
+    // Esto sustituye la tabla mock del frontend con datos derivados reales.
+    const today = new Date();
+    const invoices = [];
+    activeOrgs.forEach((org) => {
+      const price = PLAN_PRICE_EUR[org.plan] || 0;
+      if (!price) return;
+      for (let i = 0; i < 6; i += 1) {
+        const issuedAt = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        // Sólo facturamos meses posteriores al alta de la org.
+        if (issuedAt < new Date(org.created_at)) break;
+        const isCurrent = i === 0;
+        invoices.push({
+          id: `vg_${org.id.slice(0, 8)}_${issuedAt.getFullYear()}_${String(issuedAt.getMonth() + 1).padStart(2, '0')}`,
+          org_id: org.id,
+          org_name: org.name,
+          plan: org.plan,
+          amount_eur: price,
+          status: isCurrent ? 'open' : 'paid',
+          issued_at: issuedAt.toISOString(),
+          source: org.stripe_customer_id ? 'stripe' : 'demo',
+        });
+      }
+    });
+    invoices.sort((a, b) => new Date(b.issued_at) - new Date(a.issued_at));
+
+    res.json({
+      mrr_eur: mrr,
+      arr_eur: arr,
+      active_orgs: activeOrgs.length,
+      total_orgs: orgs.length,
+      planPrices: PLAN_PRICE_EUR,
+      planBreakdown: planBreakdownResult.rows,
+      monthlySeries: monthlySeriesResult.rows,  // [{ bucket, mrr_eur, active_orgs }]
+      yearlySeries:  yearlySeriesResult.rows,   // [{ bucket, arr_eur, active_orgs }]
+      invoices: invoices.slice(0, 60),          // últimas 60 transacciones globales
+    });
+  } catch (err) {
+    console.error('getSuperadminBilling error:', err);
+    res.status(500).json({ error: 'Error al obtener facturación global' });
+  }
+};
+
+// GET /superadmin/users — listado global paginado, filtros por rol y organización.
+const getSuperadminUsers = async (req, res) => {
+  try {
+    const { page = 1, limit = 25, search = '', role, organizationId } = req.query;
+    const offset = (page - 1) * limit;
+    const searchParam = `%${search}%`;
+
+    const where = [`(u.name ILIKE $1 OR u.email ILIKE $1)`];
+    const values = [searchParam];
+    let idx = 2;
+
+    if (role) {
+      where.push(`u.role = $${idx++}`);
+      values.push(role);
+    }
+    if (organizationId) {
+      where.push(`u.organization_id = $${idx++}`);
+      values.push(organizationId);
+    }
+
+    const whereSql = `WHERE ${where.join(' AND ')}`;
+    values.push(limit, offset);
+
+    const result = await query(
+      `SELECT u.id, u.name, u.email, u.role, u.is_active, u.last_login, u.created_at,
+              u.organization_id, o.name AS organization_name, o.plan AS organization_plan
+         FROM users u
+         LEFT JOIN organizations o ON o.id = u.organization_id
+         ${whereSql}
+         ORDER BY u.created_at DESC
+         LIMIT $${idx} OFFSET $${idx + 1}`,
+      values
+    );
+
+    const countResult = await query(
+      `SELECT COUNT(*) FROM users u ${whereSql}`,
+      values.slice(0, -2)
+    );
+
+    res.json({
+      users: result.rows,
+      total: parseInt(countResult.rows[0].count, 10),
+    });
+  } catch (err) {
+    console.error('getSuperadminUsers error:', err);
+    res.status(500).json({ error: 'Error al obtener usuarios' });
   }
 };
 
@@ -397,4 +634,6 @@ module.exports = {
   getAllOrgs,
   superadminUpdateOrg,
   getSuperadminStats,
+  getSuperadminBilling,
+  getSuperadminUsers,
 };

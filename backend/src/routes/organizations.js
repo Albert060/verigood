@@ -3,6 +3,7 @@ const { authenticate, authorize, authenticateSuperadmin } = require('../middlewa
 const {
   getOrg, updateOrg, getStats, updateModules,
   getAllOrgs, superadminUpdateOrg, getSuperadminStats,
+  getSuperadminBilling, getSuperadminUsers,
 } = require('../controllers/organizationsController');
 
 const router = express.Router();
@@ -21,5 +22,7 @@ router.patch('/organizations/:orgId/modules', authenticate, authorize('admin_cen
 router.get('/superadmin/organizations', authenticateSuperadmin, getAllOrgs);
 router.patch('/superadmin/organizations/:orgId', authenticateSuperadmin, superadminUpdateOrg);
 router.get('/superadmin/stats', authenticateSuperadmin, getSuperadminStats);
+router.get('/superadmin/billing', authenticateSuperadmin, getSuperadminBilling);
+router.get('/superadmin/users', authenticateSuperadmin, getSuperadminUsers);
 
 module.exports = router;

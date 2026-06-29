@@ -11,11 +11,16 @@ const authenticate = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+    // LEFT JOIN: el superadmin no tiene organization_id, pero sigue siendo un
+    // usuario válido. Antes era INNER JOIN y devolvía 0 filas → 401 silencioso
+    // en cualquier ruta autenticada genérica (catálogo de módulos, listar
+    // módulos de una org concreta, etc.) cuando el llamante era superadmin.
     const result = await query(
       `SELECT u.id, u.email, u.name, u.role, u.organization_id, u.is_active,
-              o.name as org_name, o.plan, o.active_modules, o.is_active as org_active
+              o.name as org_name, o.plan, o.active_modules,
+              COALESCE(o.is_active, true) as org_active
        FROM users u
-       JOIN organizations o ON u.organization_id = o.id
+       LEFT JOIN organizations o ON u.organization_id = o.id
        WHERE u.id = $1`,
       [decoded.userId]
     );
@@ -30,7 +35,9 @@ const authenticate = async (req, res, next) => {
       return res.status(403).json({ error: 'Cuenta desactivada' });
     }
 
-    if (!user.org_active) {
+    // El check de organización suspendida sólo aplica a usuarios con org
+    // (admin_centro / profesor). El superadmin es transversal y no tiene una.
+    if (user.role !== 'superadmin' && !user.org_active) {
       return res.status(403).json({ error: 'Organización suspendida' });
     }
 

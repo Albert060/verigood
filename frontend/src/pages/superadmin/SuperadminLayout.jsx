@@ -5,6 +5,8 @@ import Sidebar, { SidebarItem, SidebarSection } from '../../components/layout/Si
 const MENU = [
   { to: '/superadmin', label: 'Dashboard', icon: '▣', end: true },
   { to: '/superadmin/organizations', label: 'Organizaciones', icon: '◎' },
+  { to: '/superadmin/users', label: 'Usuarios', icon: '☰' },
+  { to: '/superadmin/modules', label: 'Módulos', icon: '◫' },
   { to: '/superadmin/billing', label: 'Facturación global', icon: '₪' },
   { to: '/superadmin/system', label: 'Sistema', icon: '⚙' },
 ];

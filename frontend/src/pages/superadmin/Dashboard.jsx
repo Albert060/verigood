@@ -1,41 +1,49 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { superadminApi } from '../../services/api';
 import { StatCard, PageHeader, Badge, ProgressBar, SectionLabel } from '../../components/ui';
 
-const PLAN_PRICES = { starter: 29, colegio: 149, enterprise: 490 };
+const PLAN_PRICES = { starter: 29, colegio: 149, enterprise: 0 };
 const PLAN_LABEL  = { starter: 'Starter', colegio: 'Colegio', enterprise: 'Enterprise' };
 const PLAN_COLOR  = { starter: 'bg-linea', colegio: 'bg-marino', enterprise: 'bg-granate' };
 
-// Mini bar chart
-function BarChart({ data }) {
-  const max = Math.max(...data.map((d) => d.value), 1);
+const MONTH_LABELS_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+function bucketLabel(bucket) {
+  // 'YYYY-MM' → 'Abr 26', 'YYYY' → 'YYYY'
+  if (!bucket) return '';
+  if (bucket.length === 4) return bucket;
+  const [y, m] = bucket.split('-');
+  return `${MONTH_LABELS_ES[Number(m) - 1]} ${y.slice(2)}`;
+}
+
+function BarChart({ data, valueKey = 'count' }) {
+  const max = Math.max(...data.map((d) => Number(d[valueKey]) || 0), 1);
   return (
-    <div className="flex items-end gap-1.5 h-16">
-      {data.map((d) => (
-        <div key={d.label} className="flex flex-col items-center gap-1 flex-1">
-          <span className="font-mono text-[9px] text-marron-soft">{d.value}</span>
-          <div
-            className="w-full bg-marino opacity-70 min-h-[2px] transition-all duration-500"
-            style={{ height: `${(d.value / max) * 48}px` }}
-          />
-          <span className="font-mono text-[8px] text-marron-soft">{d.label}</span>
-        </div>
-      ))}
+    <div className="flex items-end gap-1.5 h-20">
+      {data.map((d) => {
+        const v = Number(d[valueKey]) || 0;
+        return (
+          <div key={d.bucket} className="flex flex-col items-center gap-1 flex-1 min-w-0">
+            <span className="font-mono text-[9px] text-marron-soft">{v}</span>
+            <div
+              className="w-full bg-marino opacity-70 min-h-[2px] transition-all duration-500"
+              style={{ height: `${(v / max) * 60}px` }}
+              title={`${bucketLabel(d.bucket)}: ${v}`}
+            />
+            <span className="font-mono text-[8px] text-marron-soft truncate w-full text-center">
+              {bucketLabel(d.bucket)}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-// Serie semanal placeholder — el endpoint /superadmin/stats no devuelve aún
-// serie temporal. Se reemplazará cuando el controller la añada.
-const WEEKLY_PLACEHOLDER = [
-  { label: 'Lun', value: 0 }, { label: 'Mar', value: 0 }, { label: 'Mié', value: 0 },
-  { label: 'Jue', value: 0 }, { label: 'Vie', value: 0 }, { label: 'Sáb', value: 0 }, { label: 'Dom', value: 0 },
-];
-
 export default function SuperadminDashboard() {
-  // Refresca cada 60s + al volver al foco. El QueryClient global tiene
-  // staleTime de 2 min y refetchOnWindowFocus desactivado.
+  const [period, setPeriod] = useState('monthly'); // 'monthly' | 'yearly'
+
   const { data: stats } = useQuery({
     queryKey: ['superadmin-stats'],
     queryFn: () => superadminApi.getStats().then((r) => r.data),
@@ -44,7 +52,6 @@ export default function SuperadminDashboard() {
     refetchOnWindowFocus: true,
   });
 
-  // Top 5 organizaciones más recientes
   const { data: orgsData, isLoading: loadingOrgs } = useQuery({
     queryKey: ['superadmin-recent-orgs'],
     queryFn: () => superadminApi.getOrgs({ limit: 5 }).then((r) => r.data),
@@ -54,13 +61,15 @@ export default function SuperadminDashboard() {
   });
   const recentOrgs = orgsData?.organizations || [];
 
-  // MRR real desde el breakdown de planes que ya devuelve el backend
   const mrr = useMemo(() => {
     const breakdown = stats?.planBreakdown || [];
     return breakdown.reduce((sum, row) => sum + (PLAN_PRICES[row.plan] || 0) * Number(row.count || 0), 0);
   }, [stats]);
 
   const planBreakdown = stats?.planBreakdown || [];
+  const series = period === 'monthly' ? (stats?.monthlySeries || []) : (stats?.yearlySeries || []);
+  const topModules = stats?.topModules || [];
+  const topOrgs = stats?.topOrganizations || [];
 
   return (
     <div className="animate-slide-in">
@@ -93,17 +102,40 @@ export default function SuperadminDashboard() {
         />
       </div>
 
+      {/* Serie temporal + plan breakdown */}
       <div className="grid grid-cols-3 gap-5 mb-6">
-        {/* Weekly usage chart — placeholder hasta que /superadmin/stats devuelva serie */}
         <div className="col-span-2 bg-card-bg border border-linea shadow-card card-fold p-4">
-          <SectionLabel className="mb-3">LLAMADAS API — ÚLTIMOS 7 DÍAS</SectionLabel>
-          <BarChart data={WEEKLY_PLACEHOLDER} />
-          <p className="font-mono text-[10px] text-marron-soft mt-2">
-            Serie temporal pendiente de exponer en el endpoint /superadmin/stats.
-          </p>
+          <div className="flex items-center justify-between mb-3">
+            <SectionLabel className="mb-0">
+              LLAMADAS API — {period === 'monthly' ? 'ÚLTIMOS 12 MESES' : 'ÚLTIMOS 3 AÑOS'}
+            </SectionLabel>
+            <div className="flex items-center gap-1">
+              {[
+                { key: 'monthly', label: 'MES' },
+                { key: 'yearly',  label: 'AÑO' },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => setPeriod(opt.key)}
+                  className={`font-mono text-[10px] px-2 py-1 border transition-colors ${
+                    period === opt.key
+                      ? 'border-marino bg-marino text-papel'
+                      : 'border-linea text-marron-soft hover:text-tinta'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {series.length === 0 ? (
+            <p className="font-mono text-[11px] text-marron-soft">Sin actividad registrada.</p>
+          ) : (
+            <BarChart data={series} valueKey="count" />
+          )}
         </div>
 
-        {/* Plan breakdown — datos reales del endpoint */}
+        {/* Plan breakdown */}
         <div className="bg-card-bg border border-linea shadow-card card-fold p-4">
           <SectionLabel className="mb-3">DISTRIBUCIÓN POR PLAN</SectionLabel>
           {planBreakdown.length === 0 ? (
@@ -125,7 +157,54 @@ export default function SuperadminDashboard() {
         </div>
       </div>
 
-      {/* Organizations table — datos reales */}
+      {/* Top módulos + Top organizaciones del mes */}
+      <div className="grid grid-cols-2 gap-5 mb-6">
+        <div className="bg-card-bg border border-linea shadow-card card-fold p-4">
+          <SectionLabel className="mb-3">TOP MÓDULOS — MES EN CURSO</SectionLabel>
+          {topModules.length === 0 ? (
+            <p className="font-mono text-[11px] text-marron-soft">Sin uso este mes.</p>
+          ) : (
+            <div className="space-y-2">
+              {topModules.map((m) => {
+                const max = Number(topModules[0]?.count) || 1;
+                return (
+                  <div key={m.module_id} className="flex items-center gap-2.5">
+                    <span className="font-mono text-[11px] text-tinta flex-1 truncate" title={m.label}>
+                      {m.label}
+                    </span>
+                    <ProgressBar value={Number(m.count)} max={max} className="w-24" />
+                    <span className="font-mono text-[11px] text-marron-soft w-10 text-right">{m.count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-card-bg border border-linea shadow-card card-fold p-4">
+          <SectionLabel className="mb-3">TOP ORGANIZACIONES — MES EN CURSO</SectionLabel>
+          {topOrgs.length === 0 ? (
+            <p className="font-mono text-[11px] text-marron-soft">Sin actividad este mes.</p>
+          ) : (
+            <div className="space-y-2">
+              {topOrgs.map((o) => {
+                const max = Number(topOrgs[0]?.count) || 1;
+                return (
+                  <div key={o.id} className="flex items-center gap-2.5">
+                    <span className="font-mono text-[11px] text-tinta flex-1 truncate" title={o.name}>
+                      {o.name}
+                    </span>
+                    <Badge variant={`plan-${o.plan || 'starter'}`}>{(o.plan || 'starter').toUpperCase()}</Badge>
+                    <span className="font-mono text-[11px] text-marron-soft w-10 text-right">{o.count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Organizaciones recientes */}
       <div className="bg-card-bg border border-linea shadow-card mb-6">
         <div className="flex items-center justify-between px-4 py-3 border-b border-linea">
           <SectionLabel className="mb-0 text-[11px]">ORGANIZACIONES RECIENTES</SectionLabel>

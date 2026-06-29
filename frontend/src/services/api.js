@@ -249,6 +249,8 @@ export const superadminApi = {
   getOrgs: (params) => api.get('/superadmin/organizations', { params }),
   updateOrg: (orgId, data) => api.patch(`/superadmin/organizations/${orgId}`, data),
   getStats: () => api.get('/superadmin/stats'),
+  getBilling: () => api.get('/superadmin/billing'),
+  getUsers: (params) => api.get('/superadmin/users', { params }),
 };
 
 export default api;
