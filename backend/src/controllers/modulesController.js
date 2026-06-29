@@ -1,6 +1,6 @@
 const { query } = require('../config/database');
 const { invalidateOrgModules, invalidateUserModules } = require('../middleware/auth');
-const { notify, TYPES } = require('../services/notifyService');
+const { notify, notifyRole, TYPES } = require('../services/notifyService');
 
 // GET /api/modules — catálogo público
 const listCatalog = async (req, res) => {
@@ -71,18 +71,38 @@ const activateModule = async (req, res) => {
     );
     if (!mod) return res.status(404).json({ error: 'Módulo no encontrado' });
 
-    await query(
+    const result = await query(
       `INSERT INTO organization_modules (organization_id, module_id, activated_by)
        VALUES ($1, $2, $3)
-       ON CONFLICT (organization_id, module_id) DO NOTHING`,
+       ON CONFLICT (organization_id, module_id) DO NOTHING
+       RETURNING module_id`,
       [orgId, moduleId, req.user.id]
     );
 
     invalidateOrgModules(orgId);
 
-    // Nota: ya NO notificamos a los profesores al activar a nivel de org —
-    // ahora la visibilidad por profesor depende de user_modules. La
-    // notificación se dispara cuando el admin asigna el módulo al profesor.
+    // Notifica a los admins del centro — el superadmin acaba de contratarles
+    // este módulo. Reproduce el mismo patrón que assignUserModule (admin →
+    // profesor): mensaje breve, link al panel de módulos del centro y
+    // module_activated como tipo. Sólo si el INSERT añadió fila (evita avisos
+    // duplicados ante reintentos idempotentes — el ON CONFLICT DO NOTHING
+    // no devuelve filas si ya estaba activado).
+    // No notificamos a los profesores: eso queda a discreción del admin
+    // cuando les asigne el módulo desde /dashboard/users.
+    if (result.rowCount > 0) {
+      const { rows: [m] } = await query(
+        `SELECT name, route_prefix FROM modules WHERE id = $1`, [moduleId]
+      );
+      await notifyRole({
+        organizationId: orgId,
+        role: 'admin_centro',
+        type: TYPES.MODULE_ACTIVATED,
+        title: `Nuevo módulo contratado: ${m?.name || moduleId}`,
+        body: 'El superadmin de VeriGood ha activado este módulo en tu centro. Asígnalo a tus profesores desde Usuarios → Módulos.',
+        link: '/dashboard/modules',
+        metadata: { moduleId },
+      });
+    }
 
     res.json({ ok: true, moduleId });
   } catch (err) {
@@ -118,10 +138,22 @@ const deactivateModule = async (req, res) => {
 
     invalidateOrgModules(orgId);
 
-    // Solo notificamos a los profesores que realmente perdieron el módulo
-    // (los que lo tenían asignado por user_modules antes del DELETE).
+    // Notifica al admin del centro — el superadmin acaba de retirar este
+    // módulo de su contrato. Espejo de activateModule, mismo patrón que
+    // unassignUserModule (admin → profesor).
+    const { rows: [m] } = await query(`SELECT name FROM modules WHERE id = $1`, [moduleId]);
+    await notifyRole({
+      organizationId: orgId,
+      role: 'admin_centro',
+      type: TYPES.MODULE_DEACTIVATED,
+      title: `Módulo retirado del centro: ${m?.name || moduleId}`,
+      body: 'El superadmin de VeriGood ha desactivado este módulo. Los profesores que lo tuvieran asignado han perdido el acceso.',
+      link: '/dashboard/modules',
+      metadata: { moduleId },
+    });
+
+    // Y a los profesores que realmente perdieron acceso (estaban en user_modules).
     if (affectedUsers.length > 0) {
-      const { rows: [m] } = await query(`SELECT name FROM modules WHERE id = $1`, [moduleId]);
       await Promise.all(affectedUsers.map((row) => notify({
         userId: row.user_id,
         organizationId: orgId,

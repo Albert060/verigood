@@ -48,6 +48,10 @@ const notify = async ({ userId, organizationId = null, type, title, body = null,
 // Notifica a TODOS los usuarios de una organización con un rol concreto.
 // Útil cuando un cambio afecta a "todos los profesores" o "todos los admins"
 // del centro (p.ej. módulo activado por admin → profesores).
+//
+// Nota: el superadmin tiene organization_id = NULL, así que esta función NO
+// le alcanza. Para eventos transversales (alta de org, error IA, factura
+// global) usa `notifySuperadmins` — vive fuera del scope de cualquier centro.
 const notifyRole = async ({ organizationId, role, type, title, body = null, link = null, metadata = {} }) => {
   if (!organizationId || !role) return [];
   try {
@@ -63,6 +67,29 @@ const notifyRole = async ({ organizationId, role, type, title, body = null, link
     return ids;
   } catch (err) {
     console.warn('notifyRole failed (non-fatal):', err.message);
+    return [];
+  }
+};
+
+// Notifica a TODOS los superadmins activos. No requiere organizationId porque
+// los superadmins son transversales al sistema (organization_id = NULL).
+// Para eventos relevantes a nivel plataforma: alta de centro, fallos de IA
+// recurrentes, facturación pagada, picos de cuota, etc.
+const notifySuperadmins = async ({ type, title, body = null, link = null, metadata = {} }) => {
+  if (!type || !title) return [];
+  try {
+    const { rows } = await query(
+      `SELECT id FROM users WHERE role = 'superadmin' AND is_active = true`
+    );
+    const ids = [];
+    for (const u of rows) {
+      // organizationId queda null: la notificación es transversal.
+      const id = await notify({ userId: u.id, organizationId: null, type, title, body, link, metadata });
+      if (id) ids.push(id);
+    }
+    return ids;
+  } catch (err) {
+    console.warn('notifySuperadmins failed (non-fatal):', err.message);
     return [];
   }
 };
@@ -93,4 +120,4 @@ const wasRecentlyNotified = async ({ userId, type, metadataMatch = {}, withinHou
   }
 };
 
-module.exports = { notify, notifyRole, wasRecentlyNotified, TYPES };
+module.exports = { notify, notifyRole, notifySuperadmins, wasRecentlyNotified, TYPES };

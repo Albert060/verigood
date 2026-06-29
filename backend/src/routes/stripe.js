@@ -2,7 +2,7 @@ const express = require('express');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { authenticate } = require('../middleware/auth');
 const { query } = require('../config/database');
-const { notifyRole, TYPES: NOTIF_TYPES } = require('../services/notifyService');
+const { notifyRole, notifySuperadmins, TYPES: NOTIF_TYPES } = require('../services/notifyService');
 
 const router = express.Router();
 
@@ -218,6 +218,14 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
             body: `Importe: ${((invoice.amount_paid || 0) / 100).toLocaleString('es-ES')} €`,
             link: '/dashboard/billing',
             metadata: { invoiceId: invoice.id, number: invoice.number },
+          });
+          // Espejo al panel global del superadmin.
+          await notifySuperadmins({
+            type: NOTIF_TYPES.INVOICE_PAID,
+            title: `Factura pagada · ${invoice.number || ''}`,
+            body: `${((invoice.amount_paid || 0) / 100).toLocaleString('es-ES')} € · org ${rows[0].id.slice(0, 8)}`,
+            link: '/superadmin/billing',
+            metadata: { invoiceId: invoice.id, number: invoice.number, orgId: rows[0].id },
           });
         }
         break;

@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { query, getClient } = require('../config/database');
-const { notifyRole, TYPES } = require('../services/notifyService');
+const { notifyRole, notifySuperadmins, TYPES } = require('../services/notifyService');
 
 const generateTokens = (userId, role, orgId) => {
   const accessToken = jwt.sign(
@@ -76,6 +76,15 @@ const register = async (req, res) => {
       refreshToken,
       user: { id: userId, name: adminName, email: adminEmail, role: 'admin_centro', orgId, orgName },
     });
+
+    // Aviso a los superadmins — alta de organización. Best-effort.
+    notifySuperadmins({
+      type: TYPES.SYSTEM,
+      title: `Nuevo centro registrado: ${orgName}`,
+      body: `Plan ${plan} · Admin: ${adminName} (${adminEmail})`,
+      link: `/superadmin/organizations`,
+      metadata: { orgId, plan, adminEmail },
+    }).catch(() => {});
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('register error:', err);

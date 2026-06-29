@@ -7,7 +7,7 @@
 // Uso típico desde un catch:
 //   await trackAiError({ orgId, code, message });
 
-const { notifyRole, TYPES } = require('./notifyService');
+const { notifyRole, notifySuperadmins, TYPES } = require('./notifyService');
 
 const WINDOW_MS = 15 * 60 * 1000;       // 15 min — ventana deslizante
 const THRESHOLD = 3;                     // 3 errores → 1 notificación
@@ -66,6 +66,19 @@ const trackAiError = async ({ orgId, code, message }) => {
     link: '/dashboard',
     metadata: { code, threshold: THRESHOLD, windowMinutes: WINDOW_MS / 60000 },
   });
+
+  // Espejo al superadmin para visibilidad de salud de la plataforma. Sólo
+  // los códigos sistémicos (no AI_INVALID_KEY: ese es responsabilidad del
+  // centro porque tiene su propia clave configurada).
+  if (code !== 'AI_INVALID_KEY' && code !== 'AI_NOT_CONFIGURED') {
+    await notifySuperadmins({
+      type: TYPES.AI_ERROR,
+      title: `Errores IA recurrentes en una org (${code})`,
+      body: `Org ${orgId.slice(0, 8)} · ${HUMAN[code] || message || ''}`,
+      link: '/superadmin/organizations',
+      metadata: { code, orgId, threshold: THRESHOLD, windowMinutes: WINDOW_MS / 60000 },
+    });
+  }
 };
 
 // Solo para tests — vaciar estado en memoria entre casos.
