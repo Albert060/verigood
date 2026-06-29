@@ -418,8 +418,9 @@ function UserModulesModal({ target, orgId, onClose }) {
       ) : stages.length === 0 ? (
         <div className="bg-[rgba(232,216,154,0.15)] border border-amarillo p-3">
           <p className="font-mono text-[11px] text-[#7A5A1E]">
-            El centro no tiene módulos activos todavía. Actívalos primero desde "Módulos"
-            para poder asignárselos a este profesor.
+            El centro aún no tiene módulos contratados. Los módulos los activa el superadmin
+            de VeriGood — contacta con el equipo para contratar los que necesites antes de
+            asignárselos a tus profesores.
           </p>
         </div>
       ) : (

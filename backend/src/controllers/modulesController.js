@@ -59,8 +59,9 @@ const listOrgModules = async (req, res) => {
 const activateModule = async (req, res) => {
   try {
     const { orgId, moduleId } = req.params;
-    if (req.user.role !== 'superadmin' &&
-        (req.user.role !== 'admin_centro' || req.user.organization_id !== orgId)) {
+    // Defensa en profundidad: la ruta ya está bloqueada con authorize('superadmin'),
+    // pero reforzamos el check aquí para evitar regresiones.
+    if (req.user.role !== 'superadmin') {
       return res.status(403).json({ error: 'Acceso denegado' });
     }
 
@@ -94,8 +95,7 @@ const activateModule = async (req, res) => {
 const deactivateModule = async (req, res) => {
   try {
     const { orgId, moduleId } = req.params;
-    if (req.user.role !== 'superadmin' &&
-        (req.user.role !== 'admin_centro' || req.user.organization_id !== orgId)) {
+    if (req.user.role !== 'superadmin') {
       return res.status(403).json({ error: 'Acceso denegado' });
     }
 
@@ -127,7 +127,7 @@ const deactivateModule = async (req, res) => {
         organizationId: orgId,
         type: TYPES.MODULE_DEACTIVATED,
         title: `Módulo desactivado: ${m?.name || moduleId}`,
-        body: 'El admin del centro ha desactivado este módulo en todo el centro.',
+        body: 'Este módulo ya no está contratado por el centro.',
         link: '/dashboard',
         metadata: { moduleId },
       })));

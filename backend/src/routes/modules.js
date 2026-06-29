@@ -20,17 +20,20 @@ router.get('/modules', authenticate, listCatalog);
 // Módulos activos de una organización
 router.get('/organizations/:orgId/modules', authenticate, listOrgModules);
 
-// Toggle de módulos (admin_centro de la propia org o superadmin)
+// Contratación de módulos por organización. EXCLUSIVO del superadmin: el
+// admin del centro NO puede activar módulos por su cuenta — solo el
+// superadmin distribuye los permisos contratados. El admin del centro
+// distribuye después esos módulos a sus profesores via /users/:userId/modules.
 router.post(
   '/organizations/:orgId/modules/:moduleId/activate',
   authenticate,
-  authorize('admin_centro', 'superadmin'),
+  authorize('superadmin'),
   activateModule
 );
 router.delete(
   '/organizations/:orgId/modules/:moduleId',
   authenticate,
-  authorize('admin_centro', 'superadmin'),
+  authorize('superadmin'),
   deactivateModule
 );
 
