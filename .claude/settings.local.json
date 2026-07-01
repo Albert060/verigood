@@ -35,7 +35,12 @@
       "Bash(mv sidebar *)",
       "Read(//c/c/Users/alber/OneDrive/Escritorio/verigood/frontend/src/components/layout/**)",
       "Bash(git checkout *)",
-      "Bash(npm test *)"
+      "Bash(npm test *)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"require\\('./backend/src/index.js'\\); setTimeout\\(\\(\\)=>{ console.log\\('OK backend loads'\\); process.exit\\(0\\); }, 800\\);\")",
+      "Bash(node -e \"require\\('./backend/src/controllers/syllabusController'\\); require\\('./backend/src/routes/syllabus'\\); console.log\\('OK modules load'\\);\")",
+      "Bash(node -e \"require\\('./backend/src/controllers/syllabusController'\\); require\\('./backend/src/controllers/libraryController'\\); require\\('./backend/src/routes/syllabus'\\); require\\('./backend/src/routes/library'\\); require\\('./backend/src/services/ocrSubjectCorrectorService'\\); require\\('./backend/src/controllers/moduleOcrController'\\); console.log\\('OK backend modules load'\\);\")",
+      "Bash(node -e \"require\\('./backend/src/services/ocrCorrectorService'\\); require\\('./backend/src/routes/cambridge'\\); console.log\\('OK backend Cambridge'\\);\")"
     ]
   }
 }

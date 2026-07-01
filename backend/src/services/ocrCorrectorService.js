@@ -35,7 +35,7 @@ const extractTextFromImage = async (imageBuffer) => {
   return detections[0].description;
 };
 
-const correctExam = async ({ extractedText, certification, level, feedbackMode = 'full' }) => {
+const correctExam = async ({ extractedText, certification, level, feedbackMode = 'full', referenceAnswerKey = null }) => {
   if (!aiAvailable(resolveApiKey())) {
     return fixtures.ocrCorrection({ certification, level });
   }
@@ -43,8 +43,18 @@ const correctExam = async ({ extractedText, certification, level, feedbackMode =
   const system = `You are an expert Cambridge English examiner. Analyze student exam answers and provide precise corrections.
 Always respond with valid JSON only.`;
 
-  const prompt = `Analyze this ${certification} ${level} exam text:
+  // Si el profesor validó una clave de respuestas de referencia (temario), se
+  // prepone para que Claude corrija contra ese criterio exacto (igual criterio
+  // para todos los alumnos del mismo ejercicio).
+  const referenceBlock = referenceAnswerKey && String(referenceAnswerKey).trim()
+    ? `\nTEACHER'S REFERENCE ANSWER KEY (validated):
+${String(referenceAnswerKey).trim()}
 
+Use this key as the exact correction criterion.`
+    : '';
+
+  const prompt = `Analyze this ${certification} ${level} exam text:
+${referenceBlock}
 ---
 ${extractedText}
 ---
@@ -56,7 +66,7 @@ Return JSON: { certification, level, totalScore, maxScore, percentage, grade, qu
   return await callClaudeJSON({ system, messages: prompt, model: 'haiku', maxTokens: 3000 });
 };
 
-const processExamImage = async ({ imageBuffer, certification, level, feedbackMode }) => {
+const processExamImage = async ({ imageBuffer, certification, level, feedbackMode, referenceAnswerKey = null }) => {
   let extractedText = null;
 
   if (visionConfigured()) {
@@ -74,7 +84,7 @@ Q1. She has gone to Paris. Q2. I have went to the cinema. Q3. They didn't came y
 Q4. He is the more intelligent boy. Q5. We're playing tennis since 2 hours.`;
   }
 
-  const correction = await correctExam({ extractedText, certification, level, feedbackMode });
+  const correction = await correctExam({ extractedText, certification, level, feedbackMode, referenceAnswerKey });
 
   return {
     ...correction,

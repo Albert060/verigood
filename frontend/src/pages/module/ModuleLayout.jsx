@@ -49,15 +49,24 @@ export default function ModuleLayout({ moduleId }) {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar>
           <SidebarSection label={moduleLabel} />
-          <SidebarItem to={base} label="Inicio" icon="▣" end />
+          <SidebarItem to={base}                 label="Temario"     icon="▤" end />
+          <SidebarItem to={`${base}/herramientas`} label="Herramientas" icon="◫" />
+          {ocrEnabled && (
+            <SidebarItem
+              to={`${base}/ocr`}
+              icon="✓"
+              label="Corregir ejercicio"
+            />
+          )}
+          <SidebarSection label="HERRAMIENTAS" />
           {loadingTools && (
             <div className="px-5 py-2 font-mono text-[11px] text-marron-soft">
-              Cargando herramientas…
+              Cargando…
             </div>
           )}
           {!loadingTools && tools.length === 0 && (
             <div className="px-5 py-2 font-mono text-[11px] text-marron-soft">
-              Sin herramientas disponibles.
+              Sin herramientas.
             </div>
           )}
           {tools.map((t) => (
@@ -68,13 +77,6 @@ export default function ModuleLayout({ moduleId }) {
               label={t.name}
             />
           ))}
-          {ocrEnabled && (
-            <SidebarItem
-              to={`${base}/ocr`}
-              icon="✓"
-              label="Corrector OCR"
-            />
-          )}
           <SidebarSection label="NAVEGACIÓN" />
           <SidebarItem to="/dashboard" label="Panel del centro" icon="←" />
         </Sidebar>

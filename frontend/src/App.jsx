@@ -60,6 +60,7 @@ import MatematicasSeries from './pages/matematicas/ExerciseSeries';
 // Layout/páginas genéricas para módulos con tools del catálogo nuevo
 import ModuleLayout from './pages/module/ModuleLayout';
 import ModuleHome from './pages/module/ModuleHome';
+import ModuleSyllabus from './pages/module/ModuleSyllabus';
 import ToolPage from './pages/module/ToolPage';
 import ModuleOcrPage from './pages/module/ModuleOcrPage';
 
@@ -146,12 +147,16 @@ export default function App() {
           <Route path="anthropic" element={<ProtectedRoute roles={['admin_centro']}><AnthropicSetup /></ProtectedRoute>} />
         </Route>
 
-        {/* Cambridge */}
+        {/* Cambridge — mismo patrón que módulos genéricos:
+             index = Temario (ModuleSyllabus reusa outlet context de CambridgeLayout).
+             /herramientas = Home clásico con las 4 tarjetas.
+             /ocr sigue siendo OcrCorrector (Cambridge tiene endpoint propio). */}
         <Route
           path="/cambridge"
           element={<ProtectedRoute module="cambridge"><CambridgeLayout /></ProtectedRoute>}
         >
-          <Route index element={<CambridgeHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<CambridgeHome />} />
           <Route path="exams/new" element={<ExamGenerator />} />
           <Route path="exams" element={<ExamsList />} />
           <Route path="exams/:id" element={<ExamDetail />} />
@@ -205,114 +210,136 @@ export default function App() {
             renderizada por ToolPage. La protección por módulo activo la hace
             el propio backend en cada /run; aquí solo guardamos por rol. */}
         <Route path="/primaria/ingles"     element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="ingles_primaria" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/primaria/plastica"   element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="plastica_primaria" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/primaria/musica"     element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="musica_primaria" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/primaria/religion"   element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="religion_primaria" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/primaria/ciudadania" element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="ciudadania_primaria" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/eso/ingles"          element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="ingles_eso" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/eso/geh"             element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="geo_historia_eso" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/eso/byg"             element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="bio_geo_eso" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/eso/fyq"             element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="fis_quim_eso" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/eso/religion"        element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="religion_eso" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
 
         {/* Resto de módulos del catálogo con tools → ModuleLayout genérico. */}
         <Route path="/primaria/matematicas"  element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="matematicas_primaria" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/primaria/lengua"       element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="lengua_primaria" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/primaria/medio"        element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="medio_primaria" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/primaria/ed-fisica"    element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="ed_fisica_primaria" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/primaria/ed-artistica" element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="ed_artistica_primaria" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/eso/lengua"            element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="lengua_eso" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/eso/matematicas"       element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="matematicas_eso" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/eso/ed-fisica"         element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="ed_fisica_eso" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/eso/tecno-digital"     element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="tecno_digital_eso" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/eso/epva"              element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="epva_eso" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/eso/valores-eticos"    element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="valores_eticos_eso" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>
         <Route path="/eso/tutorias"          element={<ProtectedRoute roles={['admin_centro', 'profesor']}><ModuleLayout moduleId="tutorias_eso" /></ProtectedRoute>}>
-          <Route index element={<ModuleHome />} />
+          <Route index element={<ModuleSyllabus />} />
+          <Route path="herramientas" element={<ModuleHome />} />
           <Route path="ocr" element={<ModuleOcrPage />} />
           <Route path=":toolKey" element={<ToolPage />} />
         </Route>

@@ -35,7 +35,7 @@ const demoFixture = (cfg, { course }) => ({
   overallFeedback: '[Modo demo — sin credenciales de IA] Correcciones de muestra para ilustrar el flujo.',
 });
 
-const processSubjectExam = async ({ imageBuffer, moduleId, course, focus, feedbackMode = 'full' }) => {
+const processSubjectExam = async ({ imageBuffer, moduleId, course, focus, feedbackMode = 'full', referenceAnswerKey = null }) => {
   const cfg = getConfig(moduleId);
   if (!cfg) {
     const err = new Error(`OCR no disponible para el módulo ${moduleId}`);
@@ -63,7 +63,22 @@ Ejemplo de respuesta del alumno: contenido placeholder para que la corrección I
   if (!aiAvailable(resolveApiKey())) {
     correction = demoFixture(cfg, { course });
   } else {
-    const userMessage = cfg.userPromptBuilder({ extractedText, course, focus, feedbackMode });
+    let userMessage = cfg.userPromptBuilder({ extractedText, course, focus, feedbackMode });
+    // Si el profesor validó una clave de respuestas de referencia (B3), la
+    // prepend al prompt para que la IA califique contra ese criterio exacto en
+    // lugar de improvisar respuestas correctas cada vez. Igualdad de criterio
+    // entre alumnos que corrigen el mismo ejercicio.
+    if (referenceAnswerKey && String(referenceAnswerKey).trim()) {
+      userMessage = `CLAVE DE RESPUESTAS DE REFERENCIA (validada por el profesor):
+${String(referenceAnswerKey).trim()}
+
+Usa esta clave como criterio de corrección exacto. Marca correcto lo que se ajuste
+a la clave y errado lo que no. Para preguntas de desarrollo, valora si el
+razonamiento coincide con la clave.
+
+--- EXAMEN DEL ALUMNO ---
+${userMessage}`;
+    }
     correction = await callClaudeJSON({
       system: cfg.system,
       messages: userMessage,

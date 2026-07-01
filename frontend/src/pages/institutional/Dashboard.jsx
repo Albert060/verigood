@@ -84,26 +84,17 @@ export default function InstitutionalDashboard() {
         />
       )}
 
-      {/* Stats — datos reales del backend, sin mocks.
-          "PROFESORES" es info de gestión (cuenta del centro), solo
-          relevante para admin_centro / superadmin. Para profesor lo
-          ocultamos y la grid se reajusta a 3 columnas en lg. */}
-      {(() => {
-        const isProfesor = user?.role === 'profesor';
-        const gridCols = isProfesor
-          ? 'grid-cols-1 sm:grid-cols-3'
-          : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4';
-        return (
-          <div className={`grid ${gridCols} gap-5 mb-10`}>
-            {!isProfesor && (
-              <StatCard label="PROFESORES" value={stats?.users?.active_users ?? 0} />
-            )}
-            <StatCard label="MÓDULOS ACTIVOS" value={activeModules.length} />
-            <StatCard label="ACCIONES IA (30D)" value={usageByModule.reduce((s, u) => s + Number(u.count || 0), 0)} />
-            <StatCard label="ÚLTIMA ACTIVIDAD" value={recentActivity[0]?.created_at ? new Date(recentActivity[0].created_at).toLocaleDateString('es-ES') : '—'} />
-          </div>
-        );
-      })()}
+      {/* Stats — solo visibles para admin_centro / superadmin.
+          El profesor no ve tarjetas de estadísticas: su dashboard se centra
+          en los módulos y sus temarios (C1). */}
+      {user?.role !== 'profesor' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
+          <StatCard label="PROFESORES" value={stats?.users?.active_users ?? 0} />
+          <StatCard label="MÓDULOS ACTIVOS" value={activeModules.length} />
+          <StatCard label="ACCIONES IA (30D)" value={usageByModule.reduce((s, u) => s + Number(u.count || 0), 0)} />
+          <StatCard label="ÚLTIMA ACTIVIDAD" value={recentActivity[0]?.created_at ? new Date(recentActivity[0].created_at).toLocaleDateString('es-ES') : '—'} />
+        </div>
+      )}
 
       {/* Module tiles */}
       <SectionLabel className="mb-5">MÓDULOS ACTIVOS</SectionLabel>
@@ -136,42 +127,39 @@ export default function InstitutionalDashboard() {
         </div>
       )}
 
-      {/* Usage + Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-card-bg border border-linea shadow-card rounded-2xl p-6">
-          <SectionLabel className="mb-5">
-            {user?.role === 'profesor' ? 'TU USO POR MÓDULO — 30 DÍAS' : 'USO POR MÓDULO — 30 DÍAS'}
-          </SectionLabel>
-          {usageByModule.length === 0 ? (
-            <EmptyState
-              glyph="∅"
-              title="Sin actividad todavía"
-              description={user?.role === 'profesor'
-                ? 'Cuando empieces a generar recursos verás aquí tu consumo.'
-                : 'Cuando tu equipo empiece a usar la plataforma, verás aquí el consumo.'}
-            />
-          ) : (
-            <div className="space-y-5">
-              {usageByModule.map((item) => (
-                <div key={`${item.module}-${item.action_type}`} className="flex items-center gap-3">
-                  <span className="font-mono text-[13px] text-marron-soft w-28 flex-shrink-0 font-medium truncate" title={item.module}>
-                    {item.module}
-                  </span>
-                  <ProgressBar value={Number(item.count)} max={Math.max(100, Number(item.count))} className="flex-1" />
-                  <span className="font-mono text-[14px] text-tinta w-10 text-right font-semibold">{item.count}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Usage + Activity — sólo admin_centro / superadmin. El profesor no
+          los ve para centrar su dashboard en los módulos → temarios (C2). */}
+      {user?.role !== 'profesor' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="bg-card-bg border border-linea shadow-card rounded-2xl p-6">
+            <SectionLabel className="mb-5">USO POR MÓDULO — 30 DÍAS</SectionLabel>
+            {usageByModule.length === 0 ? (
+              <EmptyState
+                glyph="∅"
+                title="Sin actividad todavía"
+                description="Cuando tu equipo empiece a usar la plataforma, verás aquí el consumo."
+              />
+            ) : (
+              <div className="space-y-5">
+                {usageByModule.map((item) => (
+                  <div key={`${item.module}-${item.action_type}`} className="flex items-center gap-3">
+                    <span className="font-mono text-[13px] text-marron-soft w-28 flex-shrink-0 font-medium truncate" title={item.module}>
+                      {item.module}
+                    </span>
+                    <ProgressBar value={Number(item.count)} max={Math.max(100, Number(item.count))} className="flex-1" />
+                    <span className="font-mono text-[14px] text-tinta w-10 text-right font-semibold">{item.count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-        <div className="lg:col-span-2 bg-card-bg border border-linea shadow-card rounded-2xl p-6">
-          <SectionLabel className="mb-5">
-            {user?.role === 'profesor' ? 'TU ACTIVIDAD RECIENTE' : 'ACTIVIDAD RECIENTE'}
-          </SectionLabel>
-          <RecentActivityList limit={10} />
+          <div className="lg:col-span-2 bg-card-bg border border-linea shadow-card rounded-2xl p-6">
+            <SectionLabel className="mb-5">ACTIVIDAD RECIENTE</SectionLabel>
+            <RecentActivityList limit={10} />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

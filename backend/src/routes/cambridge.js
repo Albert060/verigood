@@ -163,7 +163,10 @@ router.post('/ocr/correct', authenticate, requireModule('cambridge'), upload.sin
   try {
     if (!req.file) return res.status(400).json({ error: 'Imagen requerida' });
 
-    const { certification = 'PET', level = 'B1', feedbackMode = 'full' } = req.body;
+    const {
+      certification = 'PET', level = 'B1', feedbackMode = 'full',
+      syllabusItemId = null, studentName = null, referenceAnswerKey = null,
+    } = req.body;
 
     const orgApiKey = await resolveOrgApiKey(req.user.organization_id);
     const result = await runWithApiKey(orgApiKey, () => processExamImage({
@@ -171,21 +174,54 @@ router.post('/ocr/correct', authenticate, requireModule('cambridge'), upload.sin
       certification,
       level,
       feedbackMode,
+      referenceAnswerKey,
     }));
 
     await logUsage(req.user.id, req.user.organization_id, 'cambridge', 'ocr_correct', 800);
+
+    // Persistir en biblioteca. Metadata es el pivote para lista de alumnos (B6).
+    let libraryItemId = null;
+    try {
+      const titleParts = [
+        `Corrección Cambridge ${certification} ${level}`,
+        studentName ? `· ${studentName}` : null,
+      ].filter(Boolean);
+      const { rows: [saved] } = await query(
+        `INSERT INTO library_items
+           (organization_id, teacher_id, module_id, tool_key, kind, title, payload, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id`,
+        [
+          req.user.organization_id,
+          req.user.id,
+          'cambridge',
+          'ocr:cambridge',
+          'ocr',
+          titleParts.join(' ').slice(0, 255),
+          JSON.stringify(result),
+          JSON.stringify({
+            certification, level, feedbackMode,
+            syllabusItemId: syllabusItemId || null,
+            studentName:    studentName    || null,
+          }),
+        ]
+      );
+      libraryItemId = saved.id;
+    } catch (libErr) {
+      console.warn('Cambridge OCR library persist failed (non-fatal):', libErr.message);
+    }
 
     await notify({
       userId: req.user.id,
       organizationId: req.user.organization_id,
       type: NOTIF_TYPES.OCR_COMPLETED,
-      title: `Corrección Cambridge ${certification} ${level}`,
+      title: `Corrección Cambridge ${studentName || `${certification} ${level}`}`,
       body: `Puntuación: ${result.totalScore ?? '—'}/${result.maxScore ?? 10}`,
-      link: '/cambridge/ocr',
-      metadata: { certification, level, score: result.totalScore },
+      link: libraryItemId ? `/dashboard/resources/${libraryItemId}` : '/cambridge/ocr',
+      metadata: { certification, level, score: result.totalScore, syllabusItemId, studentName },
     });
 
-    res.json(result);
+    res.json({ ...result, libraryItemId, syllabusItemId, studentName });
   } catch (err) {
     console.error('ocr correct error:', err);
     res.status(500).json({ error: err.message || 'Error al procesar el examen' });

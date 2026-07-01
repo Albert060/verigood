@@ -23,6 +23,7 @@ const medioRoutes = require('./routes/medio');
 const stripeRoutes = require('./routes/stripe');
 const anthropicRoutes = require('./routes/anthropic');
 const pdfRoutes = require('./routes/pdf');
+const syllabusRoutes = require('./routes/syllabus');
 
 const app = express();
 
@@ -88,6 +89,7 @@ app.use('/api', moduleToolsRoutes);
 app.use('/api', moduleOcrRoutes);
 app.use('/api', libraryRoutes);
 app.use('/api', notificationsRoutes);
+app.use('/api', syllabusRoutes);
 app.use('/api/cambridge', cambridgeRoutes);
 app.use('/api/lengua', lenguaRoutes);
 app.use('/api/matematicas', matematicasRoutes);

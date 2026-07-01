@@ -8,7 +8,7 @@ import RecentActivityList from '../../components/ui/RecentActivityList';
 
 const AGENTS = [
   { to: '/cambridge/exams/new', roman: 'I', title: 'Generador de exámenes', desc: 'A1–C2 · Múltiple choice, cloze, word formation, key word transformation. Híbrido BD + IA.' },
-  { to: '/cambridge/ocr', roman: 'II', title: 'Corrector OCR', desc: 'Sube foto del examen manuscrito → corrección con puntuación, errores y feedback individualizado.' },
+  { to: '/cambridge/ocr', roman: 'II', title: 'Corregir ejercicio', desc: 'Sube foto del examen manuscrito → corrección con puntuación, errores y feedback individualizado.' },
   { to: '/cambridge/dynamics', roman: 'III', title: 'Dinámicas de clase', desc: '8 tipos: vocabulary, speaking, reading, writing, listening, grammar, warmup, review.' },
   { to: '/cambridge/presentations', roman: 'IV', title: 'Presentaciones', desc: 'Sube un PDF o pega texto → estructura de slides + prompt para NotebookLM.' },
 ];
@@ -17,14 +17,13 @@ export default function CambridgeHome() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const orgId = user?.orgId || user?.organization_id;
+  const isProfesor = user?.role === 'profesor';
 
-  // Stats reales del centro — el endpoint devuelve usageByModule agregado
-  // desde usage_logs. Aquí filtramos por module === 'cambridge' para los KPIs.
-  // La lista de actividad reciente se delega a RecentActivityList.
+  // Stats solo se cargan si vamos a mostrarlas (admin_centro / superadmin).
   const { data: stats } = useQuery({
     queryKey: ['org-stats', orgId],
     queryFn: () => orgApi.getStats(orgId).then((r) => r.data),
-    enabled: !!orgId,
+    enabled: !!orgId && !isProfesor,
     refetchInterval: 60_000,
   });
 
@@ -43,16 +42,20 @@ export default function CambridgeHome() {
     <div className="animate-slide-in">
       <PageHeader
         title={<>Inglés / <em>Cambridge</em></>}
-        subtitle="4 AGENTES IA · A1–C2 · CERTIFICACIONES CAMBRIDGE"
+        subtitle={isProfesor ? 'A1–C2 · CERTIFICACIONES CAMBRIDGE' : '4 AGENTES IA · A1–C2 · CERTIFICACIONES CAMBRIDGE'}
         romanNum="§ I"
       />
 
-      <div className="grid grid-cols-4 gap-3 mb-6">
-        <StatCard label="EXÁMENES GENERADOS" value={cambridgeUsage.exams} />
-        <StatCard label="CORRECCIONES OCR" value={cambridgeUsage.ocr} />
-        <StatCard label="DINÁMICAS" value={cambridgeUsage.dynamics} />
-        <StatCard label="PRESENTACIONES" value={cambridgeUsage.presentations} />
-      </div>
+      {/* C3 — Los 4 contadores de agentes IA solo se muestran al admin_centro.
+          El profesor ve el módulo centrado en sus herramientas / temario. */}
+      {!isProfesor && (
+        <div className="grid grid-cols-4 gap-3 mb-6">
+          <StatCard label="EXÁMENES GENERADOS" value={cambridgeUsage.exams} />
+          <StatCard label="CORRECCIONES OCR" value={cambridgeUsage.ocr} />
+          <StatCard label="DINÁMICAS" value={cambridgeUsage.dynamics} />
+          <StatCard label="PRESENTACIONES" value={cambridgeUsage.presentations} />
+        </div>
+      )}
 
       <SectionLabel className="mb-3">HERRAMIENTAS DISPONIBLES</SectionLabel>
       <div className="grid grid-cols-2 gap-3 mb-6">
@@ -69,8 +72,12 @@ export default function CambridgeHome() {
         ))}
       </div>
 
-      <SectionLabel className="mb-3">ACTIVIDAD RECIENTE</SectionLabel>
-      <RecentActivityList moduleFilter="cambridge" limit={6} />
+      {!isProfesor && (
+        <>
+          <SectionLabel className="mb-3">ACTIVIDAD RECIENTE</SectionLabel>
+          <RecentActivityList moduleFilter="cambridge" limit={6} />
+        </>
+      )}
     </div>
   );
 }

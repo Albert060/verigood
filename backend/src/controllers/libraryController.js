@@ -134,6 +134,40 @@ const getItem = async (req, res) => {
   }
 };
 
+// PATCH /api/library/items/:id
+// Actualiza campos de metadata que el profe controla desde el flujo de
+// corrección: puntuación final (B5), visto bueno (B5), nombre del alumno (B).
+// No permite tocar el payload ni otras columnas.
+const updateItem = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { finalScore, approvedAt, studentName } = req.body || {};
+
+    const { rows: [row] } = await query(
+      `SELECT metadata FROM library_items
+        WHERE id = $1 AND organization_id = $2`,
+      [id, req.user.organization_id]
+    );
+    if (!row) return res.status(404).json({ error: 'Elemento no encontrado' });
+
+    const metadata = { ...(row.metadata || {}) };
+    if (finalScore   !== undefined) metadata.finalScore   = Number(finalScore);
+    if (approvedAt   !== undefined) metadata.approvedAt   = approvedAt;
+    if (studentName  !== undefined) metadata.studentName  = studentName;
+
+    const { rows: [saved] } = await query(
+      `UPDATE library_items SET metadata = $1
+        WHERE id = $2 AND organization_id = $3
+        RETURNING id, metadata`,
+      [JSON.stringify(metadata), id, req.user.organization_id]
+    );
+    res.json({ id: saved.id, metadata: saved.metadata });
+  } catch (err) {
+    console.error('library updateItem error:', err);
+    res.status(500).json({ error: 'Error al actualizar el elemento' });
+  }
+};
+
 // DELETE /api/library/items/:id
 const deleteItem = async (req, res) => {
   try {
@@ -150,4 +184,4 @@ const deleteItem = async (req, res) => {
   }
 };
 
-module.exports = { createItem, listItems, getItem, deleteItem, KNOWN_KINDS };
+module.exports = { createItem, listItems, getItem, updateItem, deleteItem, KNOWN_KINDS };

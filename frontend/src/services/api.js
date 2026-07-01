@@ -128,6 +128,19 @@ export const modulesApi = {
   unassignUserModule: (userId, moduleId) => api.delete(`/users/${userId}/modules/${moduleId}`),
 };
 
+// ── Syllabus (Temario del módulo — Fase D) ───────────────────
+export const syllabusApi = {
+  get:              (moduleId) => api.get(`/modules/${moduleId}/syllabus`),
+  createSection:    (moduleId, data) => api.post(`/modules/${moduleId}/syllabus/sections`, data),
+  updateSection:    (sectionId, data) => api.patch(`/syllabus/sections/${sectionId}`, data),
+  deleteSection:    (sectionId) => api.delete(`/syllabus/sections/${sectionId}`),
+  createItem:       (sectionId, data) => api.post(`/syllabus/sections/${sectionId}/items`, data),
+  getItem:          (itemId) => api.get(`/syllabus/items/${itemId}`),
+  listCorrections:  (itemId) => api.get(`/syllabus/items/${itemId}/corrections`),
+  updateItem:       (itemId, data) => api.patch(`/syllabus/items/${itemId}`, data),
+  deleteItem:       (itemId) => api.delete(`/syllabus/items/${itemId}`),
+};
+
 // ── Module tools (catálogo de herramientas + ejecución) ──────
 export const moduleToolsApi = {
   list: (moduleId) => api.get(`/modules/${moduleId}/tools`),
@@ -149,6 +162,7 @@ export const libraryApi = {
   list:   (params) => api.get('/library/items', { params }),
   get:    (id)     => api.get(`/library/items/${id}`),
   create: (data)   => api.post('/library/items', data),
+  update: (id, data) => api.patch(`/library/items/${id}`, data),
   remove: (id)     => api.delete(`/library/items/${id}`),
 };
 
