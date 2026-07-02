@@ -22,7 +22,9 @@
 }
 
 html {
-  font-size: 17px;
+  /* Base rem bumped a ~12 %: crecen todas las clases Tailwind rem-based
+     (text-xs, text-sm, text-base, spacing, etc.). */
+  font-size: 19px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -33,8 +35,14 @@ body {
   background-color: #FFFEF9;
   color: #14182B;
   min-height: 100vh;
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.55;
+
+  /* zoom global: escala uniforme del ~10 % que también agranda las clases
+     con tamaño en píxeles arbitrarios (text-[11px], text-[13px], font-mono
+     text-[10px], etc.), muy usadas en todo el proyecto. Sin esto, solo
+     crecerían las clases rem-based y el bump sería muy desigual. */
+  zoom: 1.10;
 }
 
 /* ── Grid paper background ──────────────────────────────────── */

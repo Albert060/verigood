@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useOutletContext, Navigate, useSearchParams, Link } from 'react-router-dom';
+import { useOutletContext, useSearchParams, Link } from 'react-router-dom';
 import { moduleOcrApi, syllabusApi, libraryApi } from '../../services/api';
 import { PageHeader, Button, TagCloud, SectionLabel, ProgressBar, Card, Badge } from '../../components/ui';
 import DownloadPdfButton from '../../components/ui/DownloadPdfButton';
@@ -15,9 +15,18 @@ import DownloadPdfButton from '../../components/ui/DownloadPdfButton';
 //    corregidos con nota y botón "Ver documento" (B6, B7).
 export default function ModuleOcrPage() {
   const { moduleId, mod } = useOutletContext();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const syllabusItemId = searchParams.get('syllabusItemId');
   const qc = useQueryClient();
+
+  // Carga del temario del módulo — sirve para el selector Tema/Ejercicio al
+  // entrar en el corrector sin haber pulsado "Corregir" desde el temario.
+  const { data: syllabusData } = useQuery({
+    queryKey: ['syllabus', moduleId],
+    queryFn: () => syllabusApi.get(moduleId).then((r) => r.data),
+    enabled: !!moduleId,
+    staleTime: 60_000,
+  });
 
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -77,9 +86,12 @@ export default function ModuleOcrPage() {
   const corrections = correctionsData?.corrections || [];
 
   const { mutate, isPending } = useMutation({
-    mutationFn: () => {
+    // Acepta el archivo por argumento para que la auto-corrección (llamada
+    // desde handleFile inmediatamente tras setFile) no lea state stale.
+    mutationFn: (fileArg) => {
+      const uploadFile = fileArg || file;
       const fd = new FormData();
-      fd.append('examImage', file);
+      fd.append('examImage', uploadFile);
       if (form.course) fd.append('course', form.course);
       if (form.focus)  fd.append('focus', form.focus);
       fd.append('feedbackMode', form.feedbackMode);
@@ -120,10 +132,24 @@ export default function ModuleOcrPage() {
     },
   });
 
+  // Al subir/seleccionar la foto: guarda el archivo y, si en modo temario ya
+  // hay clave validada + nombre de alumno + curso, dispara la corrección
+  // automáticamente (sin clic extra). El profe solo pone foco/archivo y sale
+  // el resultado. En modo suelto (sin syllabusItemId) no auto-fire: allí el
+  // profe sigue rellenando parámetros abajo antes de "Corregir prueba".
   const handleFile = (f) => {
-    if (!f) return;
+    if (!f) {
+      setFile(null);
+      setPreview(null);
+      return;
+    }
     setFile(f);
     setPreview(URL.createObjectURL(f));
+    const referenceOK = syllabusItemId && !!item?.metadata?.answer_key && !answerKeyDirty;
+    if (referenceOK && studentName.trim() && form.course && !isPending) {
+      // Pasamos el archivo por argumento — evita leer state stale de `file`.
+      mutate(f);
+    }
   };
 
   const resetForNext = () => {
@@ -138,12 +164,38 @@ export default function ModuleOcrPage() {
     return <div className="font-mono text-[11px] text-marron-soft">Cargando corrector…</div>;
   }
   if (!cfg?.enabled) {
-    return <Navigate to={mod?.route_prefix || '/dashboard'} replace />;
+    // Antes hacíamos <Navigate> silencioso — daba un flash al usuario y no
+    // había pista de qué pasaba. Ahora explicamos: si el módulo NO está en
+    // OCR_CONFIG del backend (ocrSubjects.js), invitamos a reiniciar; si es
+    // que el módulo genuinamente no tiene OCR, ofrecemos volver al módulo.
+    return (
+      <div className="animate-slide-in">
+        <PageHeader
+          title="Corregir ejercicio"
+          subtitle={`${(mod?.name || '').toUpperCase()} · OCR NO DISPONIBLE`}
+          romanNum="§ I.II"
+        />
+        <div className="bg-[rgba(232,216,154,0.15)] border border-amarillo p-4">
+          <p className="font-mono text-[12px] text-[#7A5A1E]">
+            El corrector OCR aún no está configurado para este módulo.
+            Si lo acabas de habilitar en <code>backend/src/services/ocrSubjects.js</code>,
+            reinicia el backend (<code>npm run dev:backend</code>) y recarga esta página.
+          </p>
+          <div className="mt-3">
+            <Link to={mod?.route_prefix || '/dashboard'} className="font-mono text-[11px] text-marino hover:text-granate transition-colors">
+              ← Volver al módulo
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const pct = result ? Math.round((result.totalScore / result.maxScore) * 100) : 0;
   const isSyllabusMode = !!syllabusItemId;
   const referenceReady = isSyllabusMode && !!item?.metadata?.answer_key && !answerKeyDirty;
+
+  const syllabusSections = syllabusData?.sections || [];
 
   return (
     <div className="animate-slide-in">
@@ -155,6 +207,30 @@ export default function ModuleOcrPage() {
             : `${cfg.label.toUpperCase()} · SUBE UNA FOTO · CORRECCIÓN AUTOMÁTICA`
         }
         romanNum="§ I.II"
+      />
+
+      {/* Selector de tema/ejercicio del temario — permite corregir organizando
+          por los mismos temas que ya creó el profe. Al elegir un ejercicio, se
+          actualiza la URL con syllabusItemId=X y se recarga todo el modo
+          temario (clave de referencia, lista de alumnos, etc.). */}
+      <TemaSelector
+        sections={syllabusSections}
+        currentItemId={syllabusItemId}
+        currentItem={item}
+        onPick={(itemId) => {
+          if (!itemId) {
+            const p = new URLSearchParams(searchParams);
+            p.delete('syllabusItemId');
+            setSearchParams(p);
+            return;
+          }
+          const p = new URLSearchParams(searchParams);
+          p.set('syllabusItemId', itemId);
+          setSearchParams(p);
+          setResult(null);
+          setFile(null);
+          setPreview(null);
+        }}
       />
 
       <div className="grid grid-cols-2 gap-5">
@@ -268,6 +344,84 @@ function seedAnswerKeyFromPayload(payload) {
 
 // ── Subcomponentes ──────────────────────────────────────────────
 
+// Selector Tema → Ejercicio del temario. Permite al profe entrar en el
+// corrector sin haber pulsado "Corregir" desde el temario y aún así organizar
+// sus correcciones por los mismos temas y ejercicios que ya tiene creados.
+// Filtra items por kind ∈ {exercise, exam} (los que tiene sentido corregir).
+function TemaSelector({ sections, currentItemId, currentItem, onPick }) {
+  const CORRECTABLE_KINDS = ['exercise', 'exam'];
+
+  // Sección actual derivada del item elegido.
+  const currentSectionId =
+    currentItem?.section_id ??
+    sections.find((s) => (s.items || []).some((it) => it.id === currentItemId))?.id ??
+    '';
+
+  const [tema, setTema] = useState(currentSectionId);
+  useEffect(() => { setTema(currentSectionId); }, [currentSectionId]);
+
+  const sectionItems = (sections.find((s) => s.id === tema)?.items || [])
+    .filter((it) => CORRECTABLE_KINDS.includes(it.kind));
+
+  const totalCorrectable = sections.reduce(
+    (s, sec) => s + (sec.items || []).filter((it) => CORRECTABLE_KINDS.includes(it.kind)).length,
+    0
+  );
+
+  if (sections.length === 0) return null;
+
+  return (
+    <div className="bg-card-bg border border-linea shadow-card p-3 mb-5 flex items-center gap-3 flex-wrap">
+      <SectionLabel className="mb-0">CORREGIR POR TEMA</SectionLabel>
+
+      <select
+        value={tema}
+        onChange={(e) => { setTema(e.target.value); onPick(null); }}
+        className="px-3 py-1.5 bg-papel border border-linea font-mono text-[12px] text-tinta focus:outline-none focus:border-marino"
+      >
+        <option value="">Elige un tema…</option>
+        {sections.map((s) => (
+          <option key={s.id} value={s.id}>{s.title}</option>
+        ))}
+      </select>
+
+      <select
+        value={currentItemId || ''}
+        onChange={(e) => onPick(e.target.value || null)}
+        disabled={!tema}
+        className="flex-1 min-w-[200px] px-3 py-1.5 bg-papel border border-linea font-mono text-[12px] text-tinta focus:outline-none focus:border-marino disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <option value="">
+          {!tema
+            ? 'Elige primero un tema'
+            : sectionItems.length === 0
+              ? 'Este tema no tiene ejercicios ni exámenes'
+              : 'Elige un ejercicio o examen…'}
+        </option>
+        {sectionItems.map((it) => (
+          <option key={it.id} value={it.id}>
+            {it.kind === 'exam' ? '📝 ' : '✎ '}{it.title}
+          </option>
+        ))}
+      </select>
+
+      {currentItemId && (
+        <button
+          onClick={() => onPick(null)}
+          className="font-mono text-[10px] text-marron-soft hover:text-tinta transition-colors"
+          title="Salir del modo temario"
+        >
+          Quitar
+        </button>
+      )}
+
+      <span className="font-mono text-[10px] text-marron-soft ml-auto">
+        {totalCorrectable} ejercicios en el temario
+      </span>
+    </div>
+  );
+}
+
 function ReferenceKeyPanel({ item, answerKey, dirty, onChange, onSave, saving, ready }) {
   return (
     <div>
@@ -380,6 +534,11 @@ function PhotoUploadForStudent({
   cfg, form, setForm, file, preview, handleFile, fileRef,
   studentName, setStudentName, onCorrect, isPending, disabled, answerKeyDirty,
 }) {
+  // El upload zone queda deshabilitado hasta que el profe haya escrito el
+  // nombre del alumno y elegido curso — así el auto-fire al subir siempre
+  // tiene todo lo que necesita.
+  const readyToShoot = !disabled && studentName.trim() && form.course && !isPending;
+
   return (
     <div className="mb-5">
       <SectionLabel className="mb-2">CORREGIR EXAMEN DEL ALUMNO</SectionLabel>
@@ -402,41 +561,56 @@ function PhotoUploadForStudent({
         className="w-full px-3 py-1.5 mb-3 bg-papel border border-linea font-mono text-[12px] text-tinta focus:outline-none focus:border-marino disabled:opacity-50"
       />
 
-      {!file ? (
-        <div
-          className="upload-zone mb-3"
-          onClick={() => !disabled && fileRef.current.click()}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => { if (disabled) return; e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
-          style={disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-        >
-          <div className="text-xl text-marron-soft mb-1">◉</div>
-          <div className="uz-title">Sube la foto del examen</div>
-          <div className="uz-sub">JPG, PNG, WebP o PDF</div>
-          <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
-        </div>
-      ) : (
-        <div className="border border-linea mb-3 relative">
-          <img src={preview} alt="preview" className="w-full max-h-40 object-cover" />
-          <button
-            onClick={() => { handleFile(null); }}
-            className="absolute top-2 right-2 bg-papel border border-linea px-2 py-0.5 font-mono text-[10px] text-marron-soft hover:text-granate"
-          >
-            Cambiar
-          </button>
-        </div>
-      )}
-
       <ConfigFields cfg={cfg} form={form} setForm={setForm} disabled={disabled} compact />
 
-      <Button
-        className="w-full mt-3"
-        loading={isPending}
-        disabled={disabled || !file || !form.course || !studentName.trim()}
-        onClick={onCorrect}
-      >
-        Corregir con la clave validada →
-      </Button>
+      <div className="mt-3">
+        {!file ? (
+          <div
+            className="upload-zone mb-2"
+            onClick={() => readyToShoot && fileRef.current.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { if (!readyToShoot) return; e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+            style={!readyToShoot ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+          >
+            <div className="text-xl text-marron-soft mb-1">◉</div>
+            <div className="uz-title">Sube la foto del examen</div>
+            <div className="uz-sub">
+              {readyToShoot
+                ? 'Se corregirá automáticamente al subirla'
+                : 'Escribe primero el nombre del alumno y el curso'}
+            </div>
+            <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
+          </div>
+        ) : (
+          <div className="border border-linea mb-2 relative">
+            <img src={preview} alt="preview" className="w-full max-h-40 object-cover" />
+            <button
+              onClick={() => { handleFile(null); }}
+              className="absolute top-2 right-2 bg-papel border border-linea px-2 py-0.5 font-mono text-[10px] text-marron-soft hover:text-granate"
+            >
+              Cambiar
+            </button>
+            {isPending && (
+              <div className="absolute inset-0 bg-papel/70 flex items-center justify-center gap-2">
+                <div className="w-5 h-5 border-2 border-marino border-t-transparent rounded-full animate-spin" />
+                <span className="font-mono text-[11px] text-tinta">Corrigiendo…</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* El botón queda como fallback manual (por si el auto-fire no saltó,
+          p. ej. el profe cambió parámetros después de subir la foto). */}
+      {file && !isPending && (
+        <Button
+          className="w-full mt-1"
+          disabled={disabled || !form.course || !studentName.trim()}
+          onClick={onCorrect}
+        >
+          Volver a corregir con estos parámetros →
+        </Button>
+      )}
     </div>
   );
 }

@@ -35,7 +35,11 @@ export default function ModuleSyllabus() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { mod, tools, moduleId, ocrEnabled } = useOutletContext();
-  const base = mod?.route_prefix || `#${moduleId}`;
+  // Cambridge tiene route_prefix '/eso/cambridge' en el catálogo (por
+  // etapa/curso) pero sus rutas reales en la SPA viven bajo '/cambridge'.
+  // Sin esta override, cualquier navigate desde el temario Cambridge caía
+  // en el fallback "*" de App.jsx y sacaba al usuario al index.
+  const base = moduleId === 'cambridge' ? '/cambridge' : (mod?.route_prefix || `#${moduleId}`);
   const stageLabel = STAGE_LABEL[mod?.stage] || '';
 
   const [newSectionTitle, setNewSectionTitle] = useState('');

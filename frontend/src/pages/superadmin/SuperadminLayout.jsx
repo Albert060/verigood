@@ -14,16 +14,16 @@ const MENU = [
 
 export default function SuperadminLayout() {
   return (
-    <div className="h-screen flex flex-col bg-grid-paper bg-papel">
+    <div className="min-h-screen flex flex-col bg-grid-paper bg-papel">
       <Topbar moduleLabel="SUPERADMIN" moduleColor="#6B1F2A" />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1">
         <Sidebar>
           <SidebarSection label="ADMINISTRACIÓN" />
           {MENU.map((item) => (
             <SidebarItem key={item.to} {...item} />
           ))}
         </Sidebar>
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1">
           <div className="p-7 max-w-6xl">
             <Outlet />
           </div>

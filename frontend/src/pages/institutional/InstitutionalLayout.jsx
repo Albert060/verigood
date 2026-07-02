@@ -77,9 +77,9 @@ export default function InstitutionalLayout() {
   }, [data]);
 
   return (
-    <div className="h-screen flex flex-col bg-grid-paper bg-papel">
+    <div className="min-h-screen flex flex-col bg-grid-paper bg-papel">
       <Topbar />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1">
         <Sidebar>
           {stages.length > 0 && <SidebarSection label="HERRAMIENTAS IA" />}
           {stages.map((s) => (
@@ -102,7 +102,7 @@ export default function InstitutionalLayout() {
             </>
           )}
         </Sidebar>
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1">
           <div className="p-10 max-w-6xl">
             <DemoBanner />
             <Outlet />

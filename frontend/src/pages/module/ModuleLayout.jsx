@@ -44,9 +44,9 @@ export default function ModuleLayout({ moduleId }) {
   const base = mod?.route_prefix || '#';
 
   return (
-    <div className="h-screen flex flex-col bg-grid-paper bg-papel">
+    <div className="min-h-screen flex flex-col bg-grid-paper bg-papel">
       <Topbar moduleLabel={moduleLabel} />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1">
         <Sidebar>
           <SidebarSection label={moduleLabel} />
           <SidebarItem to={base}                 label="Temario"     icon="▤" end />
@@ -80,8 +80,7 @@ export default function ModuleLayout({ moduleId }) {
           <SidebarSection label="NAVEGACIÓN" />
           <SidebarItem to="/dashboard" label="Panel del centro" icon="←" />
         </Sidebar>
-        <main className="flex-1 overflow-y-auto">
-          <div className="h-0.5 bg-marino opacity-30" />
+        <main className="flex-1">
           <div className="p-7 max-w-4xl">
             <DemoBanner />
             <Outlet context={{ moduleId, mod, tools, ocrEnabled }} />

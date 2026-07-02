@@ -39,9 +39,9 @@ export default function CambridgeLayout() {
   const outletCtx = { moduleId: 'cambridge', mod, tools, ocrEnabled: true };
 
   return (
-    <div className="h-screen flex flex-col bg-grid-paper bg-papel">
+    <div className="min-h-screen flex flex-col bg-grid-paper bg-papel">
       <Topbar moduleLabel="CAMBRIDGE" moduleColor="#1F2A4D" />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1">
         <Sidebar>
           <SidebarSection label="CAMBRIDGE · INGLÉS" />
           {MENU.map((item) => <SidebarItem key={item.to} {...item} />)}
@@ -50,8 +50,7 @@ export default function CambridgeLayout() {
           <SidebarSection label="NAVEGACIÓN" />
           <SidebarItem to="/dashboard" label="Panel del centro" icon="←" />
         </Sidebar>
-        <main className="flex-1 overflow-y-auto">
-          <div className="h-0.5 bg-marino opacity-30" />
+        <main className="flex-1">
           <div className="p-7 max-w-4xl">
             <DemoBanner />
             <Outlet context={outletCtx} />

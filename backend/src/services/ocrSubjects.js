@@ -165,6 +165,116 @@ const OCR_CONFIG = {
     system: 'Eres profesor/a de Tecnología y Digitalización en un IES español, con criterio LOMLOE. Valoras el rigor técnico y el razonamiento. Devuelve SOLO JSON válido.',
     userPromptBuilder: baseUserPrompt('Tecnología y Digitalización (ESO)'),
   },
+
+  // ── PLÁSTICA — PRIMARIA ──────────────────────────────────
+  plastica_primaria: {
+    label: 'Plástica',
+    levelLabel: 'Curso',
+    levels: COURSES_PRIMARIA,
+    focusOptions: ['Teoría del color','Conceptos técnicos','Análisis de obra','Historia del arte','Vocabulario visual'],
+    system: 'Eres maestro/a de Educación Plástica en Primaria, en un colegio español, con criterio LOMLOE. Corriges pruebas teóricas de plástica (color, técnicas, análisis). Devuelve SOLO JSON válido.',
+    userPromptBuilder: baseUserPrompt('Plástica (Primaria)'),
+  },
+
+  // ── MÚSICA — PRIMARIA ────────────────────────────────────
+  musica_primaria: {
+    label: 'Música',
+    levelLabel: 'Curso',
+    levels: COURSES_PRIMARIA,
+    focusOptions: ['Lenguaje musical','Historia de la música','Instrumentos','Ritmo y compás','Audición'],
+    system: 'Eres maestro/a de Música en Primaria, en un colegio español, con criterio LOMLOE. Corriges pruebas teóricas de música (notación, ritmo, historia). Devuelve SOLO JSON válido.',
+    userPromptBuilder: baseUserPrompt('Música (Primaria)'),
+  },
+
+  // ── RELIGIÓN — PRIMARIA ─────────────────────────────────
+  religion_primaria: {
+    label: 'Religión',
+    levelLabel: 'Curso',
+    levels: COURSES_PRIMARIA,
+    focusOptions: ['Conceptos','Textos bíblicos','Valores','Redacción'],
+    system: 'Eres maestro/a de Religión en Primaria, en un colegio español. Corriges con criterio pedagógico y sensibilidad al contenido. Devuelve SOLO JSON válido.',
+    userPromptBuilder: baseUserPrompt('Religión (Primaria)'),
+  },
+
+  // ── ED. CIUDADANÍA — PRIMARIA ───────────────────────────
+  ciudadania_primaria: {
+    label: 'Ed. Ciudadanía',
+    levelLabel: 'Curso',
+    levels: COURSES_PRIMARIA,
+    focusOptions: ['Conceptos','Argumentación','Actualidad','Redacción'],
+    system: 'Eres maestro/a de Educación en Valores Cívicos y Éticos en Primaria, con criterio LOMLOE. Valoras la argumentación y el uso de conceptos. Devuelve SOLO JSON válido.',
+    userPromptBuilder: baseUserPrompt('Educación en Valores Cívicos (Primaria)'),
+  },
+
+  // ── ED. FÍSICA — PRIMARIA ───────────────────────────────
+  ed_fisica_primaria: {
+    label: 'Educación Física',
+    levelLabel: 'Curso',
+    levels: COURSES_PRIMARIA,
+    focusOptions: ['Anatomía básica','Reglas de juegos','Salud y hábitos','Conceptos deportivos'],
+    system: 'Eres maestro/a de Educación Física en Primaria, con criterio LOMLOE. Corriges la parte teórica de la asignatura. Devuelve SOLO JSON válido.',
+    userPromptBuilder: baseUserPrompt('Educación Física (Primaria)'),
+  },
+
+  // ── ED. ARTÍSTICA — PRIMARIA ────────────────────────────
+  ed_artistica_primaria: {
+    label: 'Educación Artística',
+    levelLabel: 'Curso',
+    levels: COURSES_PRIMARIA,
+    focusOptions: ['Conceptos','Análisis de obra','Vocabulario artístico','Historia del arte'],
+    system: 'Eres maestro/a de Educación Artística en Primaria, en un colegio español, con criterio LOMLOE. Devuelve SOLO JSON válido.',
+    userPromptBuilder: baseUserPrompt('Educación Artística (Primaria)'),
+  },
+
+  // ── ED. FÍSICA — ESO ────────────────────────────────────
+  ed_fisica_eso: {
+    label: 'Educación Física',
+    levelLabel: 'Curso',
+    levels: COURSES_ESO,
+    focusOptions: ['Anatomía y fisiología','Sistemas del cuerpo','Reglas deportivas','Entrenamiento y salud','Nutrición'],
+    system: 'Eres profesor/a de Educación Física en un IES español, con criterio LOMLOE. Corriges la parte teórica de la asignatura con rigor científico. Devuelve SOLO JSON válido.',
+    userPromptBuilder: baseUserPrompt('Educación Física (ESO)'),
+  },
+
+  // ── EPVA (Ed. Plástica, Visual y Audiovisual) — ESO ──────
+  epva_eso: {
+    label: 'EPVA',
+    levelLabel: 'Curso',
+    levels: COURSES_ESO,
+    focusOptions: ['Teoría del color','Perspectiva y geometría','Análisis de obra','Historia del arte','Lenguaje audiovisual'],
+    system: 'Eres profesor/a de Educación Plástica, Visual y Audiovisual en un IES español, con criterio LOMLOE. Devuelve SOLO JSON válido.',
+    userPromptBuilder: baseUserPrompt('EPVA (ESO)'),
+  },
+
+  // ── RELIGIÓN — ESO ──────────────────────────────────────
+  religion_eso: {
+    label: 'Religión',
+    levelLabel: 'Curso',
+    levels: COURSES_ESO,
+    focusOptions: ['Conceptos','Textos religiosos','Historia de las religiones','Ética y valores','Redacción'],
+    system: 'Eres profesor/a de Religión en un IES español. Corriges con criterio pedagógico y sensibilidad al contenido. Devuelve SOLO JSON válido.',
+    userPromptBuilder: baseUserPrompt('Religión (ESO)'),
+  },
+
+  // ── VALORES ÉTICOS — ESO ────────────────────────────────
+  valores_eticos_eso: {
+    label: 'Valores Éticos',
+    levelLabel: 'Curso',
+    levels: COURSES_ESO,
+    focusOptions: ['Argumentación','Conceptos filosóficos','Análisis de dilemas','Actualidad y ética','Redacción'],
+    system: 'Eres profesor/a de Valores Éticos / Educación en Valores Cívicos y Éticos en un IES español, con criterio LOMLOE. Valoras la argumentación fundamentada. Devuelve SOLO JSON válido.',
+    userPromptBuilder: baseUserPrompt('Valores Éticos (ESO)'),
+  },
+
+  // ── TUTORÍAS — ESO ──────────────────────────────────────
+  tutorias_eso: {
+    label: 'Tutorías',
+    levelLabel: 'Curso',
+    levels: COURSES_ESO,
+    focusOptions: ['Reflexión personal','Convivencia','Técnicas de estudio','Orientación'],
+    system: 'Eres profesor/a-tutor/a en un IES español, con criterio LOMLOE. Corriges cuestionarios y reflexiones de acción tutorial con sensibilidad pedagógica. Devuelve SOLO JSON válido.',
+    userPromptBuilder: baseUserPrompt('Tutorías (ESO)'),
+  },
 };
 
 const isEnabled = (moduleId) => Object.prototype.hasOwnProperty.call(OCR_CONFIG, moduleId);

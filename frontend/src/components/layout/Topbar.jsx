@@ -37,7 +37,7 @@ export default function Topbar({ moduleLabel, moduleColor }) {
   const initials = user?.name?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'VG';
 
   return (
-    <header className="h-16 flex items-center justify-between px-7 border-b border-linea bg-sidebar-bg flex-shrink-0 z-10">
+    <header className="h-16 flex items-center justify-between px-7 border-b border-linea bg-sidebar-bg flex-shrink-0 sticky top-0 z-40">
       {/* Left: logo + module */}
       <div className="flex items-center gap-4">
         <span

@@ -7,7 +7,11 @@
 // En producción cada org tiene su propia clave en BD (cifrada) y el dispatcher
 // la pasa explícita aquí; la del env queda como fallback de entornos de prueba.
 const aiAvailable = (explicitKey) => {
-  const k = (explicitKey !== undefined ? explicitKey : process.env.ANTHROPIC_API_KEY || '').trim();
+  // Trata null y undefined por igual como "no se pasó clave". El ternario
+  // anterior solo comprobaba undefined, así que aiAvailable(null) — típico
+  // cuando la org no tiene clave configurada — daba null.trim() → TypeError.
+  const raw = (explicitKey == null ? process.env.ANTHROPIC_API_KEY : explicitKey) || '';
+  const k = String(raw).trim();
   if (!k) return false;
   if (k.includes('PLACEHOLDER')) return false;
   if (!k.startsWith('sk-ant-')) return false;

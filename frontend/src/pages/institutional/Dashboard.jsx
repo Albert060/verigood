@@ -107,21 +107,21 @@ export default function InstitutionalDashboard() {
           className="mb-10"
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
           {activeModules.map((mod, idx) => (
             <button
               key={mod.id}
               onClick={() => navigate(mod.route_prefix)}
-              className="bg-card-bg border border-linea shadow-card rounded-2xl p-6 text-left hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+              className="bg-card-bg border border-linea shadow-card rounded-2xl p-8 min-h-[210px] text-left hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex flex-col"
             >
-              <div className="font-display italic text-[14px] mb-3 text-marron-soft opacity-60">
+              <div className="font-display italic text-[22px] mb-5 text-marron-soft opacity-60">
                 § {romanize(idx + 1)}
               </div>
-              <div className="text-[18px] font-semibold text-tinta mb-1">{mod.name}</div>
-              <div className="font-mono text-[12px] text-marron-soft">
+              <div className="text-[30px] font-semibold text-tinta mb-3 leading-tight">{mod.name}</div>
+              <div className="font-mono text-[15px] text-marron-soft">
                 {mod.stage.toUpperCase()} · {mod.category === 'preparacion_examen' ? 'PREP. EXAMEN' : 'ASIGNATURA'}
               </div>
-              <div className="mt-4 h-1 w-12 rounded-full bg-marino opacity-40" />
+              <div className="mt-auto pt-5 h-1 w-16 rounded-full bg-marino opacity-40" />
             </button>
           ))}
         </div>
