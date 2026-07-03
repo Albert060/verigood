@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { moduleToolsApi, libraryApi } from '../../services/api';
 import { PageHeader, Button } from '../ui';
 import DynamicForm from './DynamicForm';
@@ -54,11 +55,29 @@ const buildDefaultTitle = (tool, input) => {
 
 export default function ToolRunner({ moduleId, tool }) {
   const qc = useQueryClient();
-  const [input, setInput] = useState(() => buildInitialInput(tool.input_schema));
+  const [searchParams] = useSearchParams();
+  // Cuando el profe llega desde el Temario, la URL trae ?syllabusItemId=X
+  // (para linkear el resultado al slot) y ?topic=Y (para prefill del campo
+  // que la tool suele llamar "topic" o similar).
+  const syllabusItemId = searchParams.get('syllabusItemId');
+  const topicFromUrl = searchParams.get('topic');
+
+  const [input, setInput] = useState(() => {
+    const base = buildInitialInput(tool.input_schema);
+    if (topicFromUrl) {
+      // Precarga el primer campo del schema que encaje semánticamente con
+      // el "tema" del temario (topic / theme / concept / focus / title).
+      const fields = tool.input_schema?.fields || [];
+      const candidates = ['topic', 'theme', 'concept', 'focus', 'title', 'work'];
+      const match = fields.find((f) => candidates.includes(f.key));
+      if (match) base[match.key] = topicFromUrl;
+    }
+    return base;
+  });
   const [savedId, setSavedId] = useState(null);
 
   const run = useMutation({
-    mutationFn: () => moduleToolsApi.run(moduleId, tool.key, input).then((r) => r.data),
+    mutationFn: () => moduleToolsApi.run(moduleId, tool.key, input, syllabusItemId).then((r) => r.data),
     onMutate: () => setSavedId(null),
     onSuccess: () => {
       // El dispatcher backend ya auto-persiste en library_items y escribe en
@@ -68,6 +87,12 @@ export default function ToolRunner({ moduleId, tool }) {
       qc.invalidateQueries({ queryKey: ['org-stats'] });
       qc.invalidateQueries({ queryKey: ['library-items'] });
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
+      // El slot del temario ya está vinculado (backend hizo el UPDATE) —
+      // invalidamos la vista del temario para refrescar al volver.
+      if (syllabusItemId) {
+        qc.invalidateQueries({ queryKey: ['syllabus', moduleId] });
+        qc.invalidateQueries({ queryKey: ['syllabus-item', syllabusItemId] });
+      }
     },
   });
 

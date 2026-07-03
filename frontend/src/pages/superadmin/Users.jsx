@@ -48,8 +48,8 @@ export default function SuperadminUsers() {
 
       {/* Filtros */}
       <div className="bg-card-bg border border-linea shadow-card p-4 mb-5">
-        <div className="grid grid-cols-12 gap-3">
-          <div className="col-span-5">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+          <div className="md:col-span-5">
             <label className="font-mono text-[10px] text-marron-soft block mb-1">BUSCAR (NOMBRE O EMAIL)</label>
             <input
               type="text"
@@ -59,7 +59,7 @@ export default function SuperadminUsers() {
               className="w-full px-3 py-1.5 bg-papel border border-linea font-mono text-[12px] text-tinta focus:outline-none focus:border-marino"
             />
           </div>
-          <div className="col-span-3">
+          <div className="md:col-span-3">
             <label className="font-mono text-[10px] text-marron-soft block mb-1">ROL</label>
             <select
               value={role}
@@ -72,7 +72,7 @@ export default function SuperadminUsers() {
               <option value="superadmin">Superadmin</option>
             </select>
           </div>
-          <div className="col-span-4">
+          <div className="md:col-span-4">
             <label className="font-mono text-[10px] text-marron-soft block mb-1">ORGANIZACIÓN</label>
             <select
               value={organizationId}

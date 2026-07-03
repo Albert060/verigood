@@ -40,7 +40,11 @@
       "Bash(node -e \"require\\('./backend/src/index.js'\\); setTimeout\\(\\(\\)=>{ console.log\\('OK backend loads'\\); process.exit\\(0\\); }, 800\\);\")",
       "Bash(node -e \"require\\('./backend/src/controllers/syllabusController'\\); require\\('./backend/src/routes/syllabus'\\); console.log\\('OK modules load'\\);\")",
       "Bash(node -e \"require\\('./backend/src/controllers/syllabusController'\\); require\\('./backend/src/controllers/libraryController'\\); require\\('./backend/src/routes/syllabus'\\); require\\('./backend/src/routes/library'\\); require\\('./backend/src/services/ocrSubjectCorrectorService'\\); require\\('./backend/src/controllers/moduleOcrController'\\); console.log\\('OK backend modules load'\\);\")",
-      "Bash(node -e \"require\\('./backend/src/services/ocrCorrectorService'\\); require\\('./backend/src/routes/cambridge'\\); console.log\\('OK backend Cambridge'\\);\")"
+      "Bash(node -e \"require\\('./backend/src/services/ocrCorrectorService'\\); require\\('./backend/src/routes/cambridge'\\); console.log\\('OK backend Cambridge'\\);\")",
+      "Bash(node -e \"require\\('./backend/src/controllers/moduleToolsController'\\); console.log\\('OK backend'\\);\")",
+      "Bash(xargs grep -l \"grid grid-cols\")",
+      "Bash(sed -i '236s/\"grid grid-cols-2 gap-5\"/\"grid grid-cols-1 md:grid-cols-2 gap-5\"/' frontend/src/pages/module/ModuleOcrPage.jsx)",
+      "Bash(sed -i '175s/\"grid grid-cols-2 gap-5\"/\"grid grid-cols-1 md:grid-cols-2 gap-5\"/' frontend/src/pages/cambridge/OcrCorrector.jsx)"
     ]
   }
 }

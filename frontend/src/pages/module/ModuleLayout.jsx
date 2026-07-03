@@ -80,8 +80,8 @@ export default function ModuleLayout({ moduleId }) {
           <SidebarSection label="NAVEGACIÓN" />
           <SidebarItem to="/dashboard" label="Panel del centro" icon="←" />
         </Sidebar>
-        <main className="flex-1">
-          <div className="p-7 max-w-4xl">
+        <main className="flex-1 min-w-0">
+          <div className="p-4 md:p-7 w-full max-w-4xl">
             <DemoBanner />
             <Outlet context={{ moduleId, mod, tools, ocrEnabled }} />
           </div>

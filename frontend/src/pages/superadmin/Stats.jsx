@@ -126,7 +126,7 @@ export default function SuperadminStats() {
       />
 
       {/* KPIs — mismos campos que ve el admin del centro pero en agregado global */}
-      <div className="grid grid-cols-4 gap-3 mb-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard
           label={showLifetime ? 'GENERACIONES TOTAL' : 'GENERACIONES MES'}
           value={isLoading ? '—'
@@ -156,7 +156,7 @@ export default function SuperadminStats() {
       </div>
 
       {/* Promedios por colegio — agregado del rendimiento real de la cartera */}
-      <div className="grid grid-cols-4 gap-3 mb-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard
           label="MEDIA GENERACIONES / COLEGIO · MES"
           value={isLoading ? '—' : (averages.calls_per_org_month ?? 0).toLocaleString('es-ES')}
@@ -187,7 +187,7 @@ export default function SuperadminStats() {
           mono={false}
         />
       </div>
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard
           label="LLAMADAS / MES"
           value={isLoading ? '—' : Number(stats?.usage?.monthly_calls ?? 0).toLocaleString('es-ES')}
@@ -411,7 +411,7 @@ export default function SuperadminStats() {
         {orgId && !loadingOrgStats && orgStats && (
           <div className="p-4 space-y-5">
             {/* KPIs del centro */}
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <StatCard
                 label="GENERACIONES MES"
                 value={(orgStats.monthly?.current_month ?? 0).toLocaleString('es-ES')}

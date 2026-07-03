@@ -102,8 +102,8 @@ export default function InstitutionalLayout() {
             </>
           )}
         </Sidebar>
-        <main className="flex-1">
-          <div className="p-10 max-w-6xl">
+        <main className="flex-1 min-w-0">
+          <div className="p-4 md:p-8 lg:p-10 w-full max-w-6xl">
             <DemoBanner />
             <Outlet />
           </div>

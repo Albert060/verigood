@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
+import { useMobileMenu } from '../../stores/mobileMenuStore';
 import { doLogout } from '../../services/api';
 import NotificationBell from './NotificationBell';
 
@@ -9,6 +10,8 @@ export default function Topbar({ moduleLabel, moduleColor }) {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const toggleMobileMenu = useMobileMenu((s) => s.toggle);
+  const mobileOpen = useMobileMenu((s) => s.isOpen);
 
   // Cerrar el menú al hacer clic fuera o pulsar Escape.
   useEffect(() => {
@@ -37,20 +40,29 @@ export default function Topbar({ moduleLabel, moduleColor }) {
   const initials = user?.name?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'VG';
 
   return (
-    <header className="h-16 flex items-center justify-between px-7 border-b border-linea bg-sidebar-bg flex-shrink-0 sticky top-0 z-40">
-      {/* Left: logo + module */}
-      <div className="flex items-center gap-4">
+    <header className="h-16 flex items-center justify-between px-4 md:px-7 border-b border-linea bg-sidebar-bg flex-shrink-0 sticky top-0 z-40">
+      {/* Left: hamburger (mobile) + logo + module */}
+      <div className="flex items-center gap-3 md:gap-4 min-w-0">
+        <button
+          type="button"
+          onClick={toggleMobileMenu}
+          className="md:hidden -ml-1 w-10 h-10 flex items-center justify-center text-tinta hover:bg-papel-hover rounded-md transition-colors flex-shrink-0"
+          aria-label={mobileOpen ? 'Cerrar menú' : 'Abrir menú'}
+          aria-expanded={mobileOpen}
+        >
+          <span className="text-[22px] leading-none">{mobileOpen ? '✕' : '☰'}</span>
+        </button>
         <span
-          className="font-display text-[20px] font-bold text-marino cursor-pointer"
+          className="font-display text-[18px] md:text-[20px] font-bold text-marino cursor-pointer flex-shrink-0"
           onClick={() => navigate('/')}
         >
           Veri<em className="text-granate">good</em>
         </span>
         {moduleLabel && (
           <>
-            <span className="text-marron-soft text-base">/</span>
+            <span className="text-marron-soft text-base hidden sm:inline">/</span>
             <span
-              className="font-mono text-[13px] tracking-[0.05em] px-3 py-1 border rounded-full font-medium"
+              className="hidden sm:inline font-mono text-[12px] md:text-[13px] tracking-[0.05em] px-2 md:px-3 py-1 border rounded-full font-medium truncate max-w-[140px] md:max-w-none"
               style={{ color: moduleColor || 'var(--marino)', borderColor: moduleColor || 'var(--marino)', background: moduleColor ? `${moduleColor}12` : 'rgba(31,42,77,0.06)' }}
             >
               {moduleLabel}
@@ -60,7 +72,7 @@ export default function Topbar({ moduleLabel, moduleColor }) {
       </div>
 
       {/* Right: org badge + avatar */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3 md:gap-4">
         {user?.orgName && (
           <span className="font-mono text-[13px] text-marron-soft hidden md:block truncate max-w-[220px]">
             {user.orgName}

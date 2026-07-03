@@ -72,7 +72,7 @@ export default function ExamGenerator() {
       {step === 0 && (
         <div>
           <SectionLabel className="mb-3">SELECCIONA EL NIVEL CEFR</SectionLabel>
-          <div className="grid grid-cols-6 gap-2 mb-6">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-6">
             {LEVELS.map((l) => (
               <button
                 key={l}
@@ -92,7 +92,7 @@ export default function ExamGenerator() {
       {/* Step 1 — Topic + count */}
       {step === 1 && (
         <div>
-          <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div>
               <SectionLabel className="mb-2">TEMA GRAMATICAL / VOCABULARIO</SectionLabel>
               <input
@@ -129,7 +129,7 @@ export default function ExamGenerator() {
 
           <div className="mt-5 mb-4">
             <SectionLabel className="mb-2">FUENTE DE PREGUNTAS</SectionLabel>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {[
                 { value: 'hybrid', label: 'Híbrido (recomendado)', desc: 'Base de datos + IA completa el resto' },
                 { value: 'ai_only', label: 'Solo IA', desc: 'Claude Sonnet genera todo el examen' },

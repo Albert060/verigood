@@ -57,10 +57,13 @@ const buildAutoTitle = (toolName, input) => {
 // herramienta — el profesor sigue viendo su resultado.
 const autoSaveToLibrary = async ({ moduleId, toolKey, toolName, kind, payload, input, userId, orgId }) => {
   try {
-    await query(
+    // RETURNING id → nos permite vincular el library_item al syllabus_item
+    // cuando el profe llegó al tool desde el Temario (?syllabusItemId=X).
+    const { rows } = await query(
       `INSERT INTO library_items
          (organization_id, teacher_id, module_id, tool_key, kind, title, payload, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id`,
       [
         orgId,
         userId,
@@ -72,12 +75,14 @@ const autoSaveToLibrary = async ({ moduleId, toolKey, toolName, kind, payload, i
         JSON.stringify({ input, toolName, autoSaved: true }),
       ]
     );
+    return rows[0]?.id || null;
   } catch (err) {
     if (err.code === '42P01') {
       console.warn('library_items: tabla no existe. Pasa la migración 004 para que la biblioteca capture las generaciones.');
     } else {
       console.warn('library auto-save failed (non-fatal):', err.message);
     }
+    return null;
   }
 };
 
@@ -117,12 +122,16 @@ const validateInput = (input, schema) => {
 };
 
 // POST /api/modules/:moduleId/tools/:toolKey/run
-// Body: { input: { ... } }
-// Devuelve: { output_kind, output }
+// Body: { input: { ... }, syllabusItemId?: uuid }
+// Si viene syllabusItemId (profe llega desde el Temario), tras auto-persistir
+// en la biblioteca linkeamos el library_item resultante a ese syllabus_item
+// (columna syllabus_items.library_item_id). Así el slot vacío del temario
+// pasa a mostrar el ejercicio/examen generado con su botón de "Corregir".
 const run = async (req, res, next) => {
   try {
     const { moduleId, toolKey } = req.params;
     const input = (req.body && req.body.input) || {};
+    const syllabusItemId = (req.body && req.body.syllabusItemId) || null;
 
     // Cargar binding + tool + stage del módulo en una sola query.
     const { rows } = await query(
@@ -311,8 +320,9 @@ const run = async (req, res, next) => {
 
     // Auto-persistencia en la biblioteca del centro. Best-effort: si falla,
     // el profesor sigue viendo su resultado. La biblioteca lo recoge sola.
+    let libraryItemId = null;
     if (result && result.output_kind && result.output) {
-      await autoSaveToLibrary({
+      libraryItemId = await autoSaveToLibrary({
         moduleId,
         toolKey,
         toolName,
@@ -323,6 +333,26 @@ const run = async (req, res, next) => {
         orgId:  ctx.orgId,
       });
 
+      // Vincular al syllabus_item cuando el profe llegó desde el Temario.
+      // Best-effort: si el update falla, el recurso sigue existiendo en la
+      // biblioteca; el profe solo pierde el link automático desde el temario.
+      if (libraryItemId && syllabusItemId) {
+        try {
+          await query(
+            `UPDATE syllabus_items si
+                SET library_item_id = $1, updated_at = NOW()
+              FROM syllabus_sections ss
+              JOIN syllabi s ON s.id = ss.syllabus_id
+             WHERE si.id = $2
+               AND si.section_id = ss.id
+               AND s.organization_id = $3`,
+            [libraryItemId, syllabusItemId, ctx.orgId]
+          );
+        } catch (linkErr) {
+          console.warn('syllabus_item link failed (non-fatal):', linkErr.message);
+        }
+      }
+
       // Notificación in-app al profesor para que pueda volver a su recurso.
       await notify({
         userId: ctx.userId,
@@ -330,12 +360,12 @@ const run = async (req, res, next) => {
         type: NOTIF_TYPES.TOOL_GENERATED,
         title: `Recurso generado: ${toolName}`,
         body: 'Tu nuevo recurso ya está disponible en la biblioteca del centro.',
-        link: '/dashboard/resources',
-        metadata: { moduleId, toolKey, kind: result.output_kind },
+        link: libraryItemId ? `/dashboard/resources/${libraryItemId}` : '/dashboard/resources',
+        metadata: { moduleId, toolKey, kind: result.output_kind, syllabusItemId },
       });
     }
 
-    res.json({ ...result, autoSaved: true });
+    res.json({ ...result, autoSaved: true, libraryItemId, syllabusItemId });
   } catch (err) {
     next(err);
   }

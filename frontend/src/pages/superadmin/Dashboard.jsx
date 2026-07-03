@@ -80,7 +80,7 @@ export default function SuperadminDashboard() {
       />
 
       {/* KPIs */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard
           label="ORGANIZACIONES"
           value={stats?.organizations?.total ?? '—'}
@@ -103,7 +103,7 @@ export default function SuperadminDashboard() {
       </div>
 
       {/* Serie temporal + plan breakdown */}
-      <div className="grid grid-cols-3 gap-5 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
         <div className="col-span-2 bg-card-bg border border-linea shadow-card card-fold p-4">
           <div className="flex items-center justify-between mb-3">
             <SectionLabel className="mb-0">

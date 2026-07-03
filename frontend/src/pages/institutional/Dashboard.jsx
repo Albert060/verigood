@@ -107,21 +107,23 @@ export default function InstitutionalDashboard() {
           className="mb-10"
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6 mb-10">
           {activeModules.map((mod, idx) => (
             <button
               key={mod.id}
               onClick={() => navigate(mod.route_prefix)}
-              className="bg-card-bg border border-linea shadow-card rounded-2xl p-8 min-h-[210px] text-left hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex flex-col"
+              className="bg-card-bg border border-linea shadow-card rounded-2xl p-5 md:p-8 min-h-[180px] md:min-h-[210px] text-left hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex flex-col overflow-hidden"
             >
-              <div className="font-display italic text-[22px] mb-5 text-marron-soft opacity-60">
+              <div className="font-display italic text-[18px] md:text-[22px] mb-3 md:mb-5 text-marron-soft opacity-60">
                 § {romanize(idx + 1)}
               </div>
-              <div className="text-[30px] font-semibold text-tinta mb-3 leading-tight">{mod.name}</div>
-              <div className="font-mono text-[15px] text-marron-soft">
+              <div className="text-[22px] md:text-[26px] lg:text-[30px] font-semibold text-tinta mb-2 md:mb-3 leading-tight break-words">
+                {mod.name}
+              </div>
+              <div className="font-mono text-[13px] md:text-[15px] text-marron-soft break-words">
                 {mod.stage.toUpperCase()} · {mod.category === 'preparacion_examen' ? 'PREP. EXAMEN' : 'ASIGNATURA'}
               </div>
-              <div className="mt-auto pt-5 h-1 w-16 rounded-full bg-marino opacity-40" />
+              <div className="mt-auto pt-4 md:pt-5 h-1 w-14 md:w-16 rounded-full bg-marino opacity-40" />
             </button>
           ))}
         </div>

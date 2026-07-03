@@ -233,7 +233,7 @@ export default function ModuleOcrPage() {
         }}
       />
 
-      <div className="grid grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* ── Panel izquierdo ─────────────────────────────────────
              Modo temario  → clave de respuestas editable + validar (B2, B3).
              Modo suelto   → panel de configuración clásico. */}

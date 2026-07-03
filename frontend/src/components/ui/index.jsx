@@ -89,18 +89,21 @@ export function Toggle({ on, onChange, disabled = false }) {
 }
 
 // ── Modal ────────────────────────────────────────────────────
+// Responsive: en móvil el modal se pega abajo tipo bottom-sheet ocupando
+// hasta 90 % de la altura; en sm+ centra y aplica max-w-xl clásico.
+// El body es scrollable si el contenido es largo.
 export function Modal({ open, onClose, title, children, footer }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-tinta/50" onClick={onClose} />
-      <div className="relative bg-papel border border-linea shadow-card-hover w-full max-w-xl animate-slide-in rounded-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-linea">
-          <h3 className="font-display text-[20px] font-bold text-tinta">{title}</h3>
-          <button onClick={onClose} className="text-marron-soft hover:text-tinta text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-papel-hover transition-colors">&times;</button>
+      <div className="relative bg-papel border border-linea shadow-card-hover w-full max-w-xl animate-slide-in rounded-t-2xl sm:rounded-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-linea flex-shrink-0">
+          <h3 className="font-display text-[17px] sm:text-[20px] font-bold text-tinta truncate pr-2">{title}</h3>
+          <button onClick={onClose} className="text-marron-soft hover:text-tinta text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-papel-hover transition-colors flex-shrink-0">&times;</button>
         </div>
-        <div className="p-6">{children}</div>
-        {footer && <div className="px-6 py-4 border-t border-linea flex justify-end gap-3 bg-card-bg">{footer}</div>}
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1">{children}</div>
+        {footer && <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-linea flex flex-wrap justify-end gap-2 sm:gap-3 bg-card-bg flex-shrink-0">{footer}</div>}
       </div>
     </div>
   );

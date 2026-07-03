@@ -45,6 +45,21 @@ body {
   zoom: 1.10;
 }
 
+/* Responsive: en pantallas < md (tablets pequeñas / móviles) desactivamos el
+   zoom global y bajamos la base rem para que el contenido no invada la
+   pantalla. Los breakpoints coinciden con Tailwind md (768px). */
+@media (max-width: 767px) {
+  html { font-size: 16px; }
+  body { font-size: 15px; zoom: 1; }
+}
+
+/* Fade-in ligero para overlays móviles del drawer. */
+@keyframes fade-in-mobile {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-fade-in { animation: fade-in-mobile 160ms ease-out both; }
+
 /* ── Grid paper background ──────────────────────────────────── */
 .bg-grid-paper {
   background-image:

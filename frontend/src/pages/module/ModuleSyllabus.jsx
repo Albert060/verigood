@@ -404,7 +404,7 @@ function ItemRow({ item, onOpen, onRename, onDelete, onCorrect, ocrEnabled }) {
         )}
       </button>
       <div className="flex items-center gap-1 flex-shrink-0">
-        {item.kind === 'exercise' && ocrEnabled && (
+        {(item.kind === 'exercise' || item.kind === 'exam') && ocrEnabled && (
           <button
             onClick={onCorrect}
             className="font-mono text-[10px] px-2 py-1 border border-marino text-marino hover:bg-marino hover:text-papel transition-colors"

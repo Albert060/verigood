@@ -846,6 +846,22 @@ linea    #B8A988   bordes, texto secundario
 - Score stamps rotados con opacidad (`.score-stamp`)
 - Números romanos en márgenes como decoración (§ I, § II...)
 
+### Responsive
+
+Breakpoint principal: **`md` (768px)** — separa móvil/tablet-pequeño de tablet-grande/desktop.
+
+- **Sidebar**: en `< md` es un drawer fijo que sale de la izquierda con backdrop. El estado vive en `stores/mobileMenuStore.js` (Zustand). El botón hamburguesa (☰) está en la Topbar (visible sólo `md:hidden`). Cada `SidebarItem` invoca `close()` al navegar. Bloquea scroll del body mientras está abierto y se cierra con `Escape`.
+- **Topbar**: `sticky top-0 z-40`. En `< md`: hamburguesa + logo + chip de módulo compacto. El nombre de la org (`orgName`) sólo se muestra en `md+`.
+- **Layouts** (`ModuleLayout`, `InstitutionalLayout`, `CambridgeLayout`, `SuperadminLayout`): `min-h-screen flex flex-col`. Padding del contenido `p-4 md:p-7` (Cambridge/Módulo/Superadmin) o `p-4 md:p-8 lg:p-10` (Institutional). El `<main>` incluye `min-w-0` para evitar overflow horizontal cuando hay tablas o textos largos.
+- **Zoom global**: `body { zoom: 1.10 }` para engordar la tipografía en desktop, **desactivado en `< md`** vía media query en `index.css` (`@media (max-width: 767px) { body { zoom: 1 } }`) — en pantallas pequeñas rompía márgenes.
+- **Grids**: patrón `grid-cols-1 sm:grid-cols-2 md:grid-cols-4` para stat cards (Superadmin Dashboard/Stats/Billing, Institutional Dashboard). Grids 12-col con `col-span-N` usan prefijo `md:` o `lg:` (Superadmin Users, Superadmin Modules).
+- **OCR paneles (izquierda/derecha)**: `grid grid-cols-1 md:grid-cols-2 gap-5`. En móvil se apilan.
+- **Cambridge**: `ExamGenerator` pasos con grids `grid-cols-3 sm:grid-cols-6` (nivel) y `grid-cols-1 sm:grid-cols-2` (tema+preguntas, tipos+source). `DynamicsGenerator` usa `grid grid-cols-1 lg:grid-cols-5` con `lg:col-span-2` / `lg:col-span-3`.
+- **Modal** (`components/ui/index.jsx`): en `< sm` se pega abajo como bottom-sheet (`rounded-t-2xl`, sin padding lateral del backdrop); en `sm+` centrado con `max-w-xl rounded-2xl`. Body con `overflow-y-auto` y modal completo con `max-h-[90vh] flex flex-col`.
+- **Tablas**: siempre envueltas en `overflow-x-auto` para permitir scroll horizontal en móvil sin romper el layout.
+
+Para pantallas de tablet (≥ 768 px), la sidebar vuelve al comportamiento sticky en flujo normal — mismo layout que desktop.
+
 ---
 
 ## Patrones de código

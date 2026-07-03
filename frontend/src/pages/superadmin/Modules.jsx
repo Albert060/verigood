@@ -100,9 +100,9 @@ export default function SuperadminModules() {
       )}
 
       {!loading && (
-        <div className="grid grid-cols-12 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* Catálogo */}
-          <div className="col-span-5 space-y-5">
+          <div className="lg:col-span-5 space-y-5">
             {STAGE_ORDER.filter((s) => grouped[s]).map((stage) => (
               <section key={stage}>
                 <SectionLabel className="mb-2">{STAGE_LABELS[stage]}</SectionLabel>
@@ -151,7 +151,7 @@ export default function SuperadminModules() {
           </div>
 
           {/* Panel de distribución */}
-          <div className="col-span-7">
+          <div className="lg:col-span-7">
             {!selected ? (
               <div className="bg-card-bg border border-linea shadow-card card-fold p-6 h-full flex flex-col items-center justify-center gap-2">
                 <div className="font-display italic text-[36px] text-[rgba(184,169,136,0.3)]">§</div>

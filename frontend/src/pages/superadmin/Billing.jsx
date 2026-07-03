@@ -195,7 +195,7 @@ export default function SuperadminBilling() {
         </span>
       </div>
 
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard
           label="MRR ACTUAL"
           value={isLoading ? '—' : formatEUR(data?.mrr_eur)}
@@ -308,7 +308,7 @@ export default function SuperadminBilling() {
       </div>
 
       {/* Plan breakdown */}
-      <div className="grid grid-cols-3 gap-5 mb-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
         {planBreakdown.length === 0 && (
           <div className="col-span-3 bg-card-bg border border-linea shadow-card p-4">
             <p className="font-mono text-[11px] text-marron-soft">Sin organizaciones activas.</p>

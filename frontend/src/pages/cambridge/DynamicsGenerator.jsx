@@ -160,9 +160,9 @@ export default function DynamicsGenerator() {
         )}
       </div>
 
-      <div className="grid grid-cols-5 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* Config panel */}
-        <div className="col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-4">
           <div className="bg-card-bg border border-linea shadow-card p-4">
             <SectionLabel className="mb-2">NIVEL</SectionLabel>
             <TagCloud options={LEVELS} selected={form.level} onChange={(v) => setForm((f) => ({ ...f, level: v }))} multi={false} />
@@ -189,7 +189,7 @@ export default function DynamicsGenerator() {
         </div>
 
         {/* Results */}
-        <div className="col-span-3">
+        <div className="lg:col-span-3">
           {results.length === 0 && !isPending && (
             <div className="h-48 flex items-center justify-center">
               <p className="font-mono text-[11px] text-marron-soft">Configura y genera para ver propuestas</p>

@@ -144,8 +144,12 @@ export const syllabusApi = {
 // ── Module tools (catálogo de herramientas + ejecución) ──────
 export const moduleToolsApi = {
   list: (moduleId) => api.get(`/modules/${moduleId}/tools`),
-  run: (moduleId, toolKey, input) =>
-    api.post(`/modules/${moduleId}/tools/${toolKey}/run`, { input }, { timeout: 90000 }),
+  run: (moduleId, toolKey, input, syllabusItemId = null) =>
+    api.post(
+      `/modules/${moduleId}/tools/${toolKey}/run`,
+      { input, syllabusItemId },
+      { timeout: 90000 }
+    ),
 };
 
 // ── Notifications (in-app) ───────────────────────────────────
