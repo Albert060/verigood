@@ -884,7 +884,7 @@ function StudentsList({ corrections }) {
 
   return (
     <div className="mt-6 bg-card-bg border border-linea shadow-card">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-linea">
+      <div className="flex items-center justify-between px-3 md:px-4 py-3 border-b border-linea flex-wrap gap-2">
         <SectionLabel className="mb-0">
           ALUMNOS CORREGIDOS — {corrections.length}
         </SectionLabel>
@@ -894,7 +894,53 @@ function StudentsList({ corrections }) {
           </span>
         )}
       </div>
-      <div className="overflow-x-auto">
+
+      {/* Móvil + tablet (< lg): lista de tarjetas apiladas. Se aplica hasta
+          lg (1024 px) porque en tablet vertical el sidebar deja poco ancho
+          para el layout y la tabla clásica queda encajonada. */}
+      <div className="lg:hidden divide-y divide-linea">
+        {corrections.map((c) => {
+          const finalScore = c.finalScore ?? c.totalScore;
+          return (
+            <div key={c.id} className="p-3">
+              <div className="flex items-start justify-between gap-2 mb-1.5">
+                <span className="font-medium text-tinta text-[14px] flex-1 min-w-0 truncate">
+                  {c.studentName || '—'}
+                </span>
+                <Badge variant={c.approvedAt ? 'active' : 'trial'}>
+                  {c.approvedAt ? 'REVISADO' : 'IA'}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-[12px] mb-2">
+                <div className="flex items-baseline gap-1">
+                  <span className="font-mono text-[10px] text-marron-soft">IA:</span>
+                  <span className="font-mono text-marron-soft">
+                    {c.totalScore != null ? `${c.totalScore}/${c.maxScore}` : '—'}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="font-mono text-[10px] text-marron-soft">Final:</span>
+                  <span className="font-mono text-tinta font-bold">
+                    {finalScore != null ? `${finalScore}/${c.maxScore}` : '—'}
+                  </span>
+                </div>
+                <span className="font-mono text-[10px] text-marron-soft">
+                  {new Date(c.created_at).toLocaleDateString('es')}
+                </span>
+              </div>
+              <Link
+                to={`/dashboard/resources/${c.id}`}
+                className="inline-block font-mono text-[11px] text-marino hover:text-granate transition-colors"
+              >
+                Ver documento →
+              </Link>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Desktop (lg+): tabla clásica con scroll horizontal defensivo. */}
+      <div className="hidden lg:block overflow-x-auto">
         <table className="vg-table">
           <thead>
             <tr>
