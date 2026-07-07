@@ -519,10 +519,13 @@ function PhotoUploadForStudent({
   );
 }
 
-// Selector Tema → Ejercicio del temario Cambridge — mismo patrón que el
-// corrector genérico. Permite organizar la corrección por temas.
+// Selector Tema → Actividad del temario Cambridge — mismo patrón que el
+// corrector genérico. Muestra TODOS los items (no solo ejercicios/exámenes).
 function TemaSelector({ sections, currentItemId, currentItem, onPick }) {
-  const CORRECTABLE_KINDS = ['exercise', 'exam'];
+  const KIND_ICON = {
+    exam: '📝', exercise: '✎', dynamic: '◆', presentation: '▥', documentation: '▤',
+  };
+
   const currentSectionId =
     currentItem?.section_id ??
     sections.find((s) => (s.items || []).some((it) => it.id === currentItemId))?.id ??
@@ -530,12 +533,8 @@ function TemaSelector({ sections, currentItemId, currentItem, onPick }) {
   const [tema, setTema] = useState(currentSectionId);
   useEffect(() => { setTema(currentSectionId); }, [currentSectionId]);
 
-  const sectionItems = (sections.find((s) => s.id === tema)?.items || [])
-    .filter((it) => CORRECTABLE_KINDS.includes(it.kind));
-  const totalCorrectable = sections.reduce(
-    (s, sec) => s + (sec.items || []).filter((it) => CORRECTABLE_KINDS.includes(it.kind)).length,
-    0
-  );
+  const sectionItems = (sections.find((s) => s.id === tema)?.items || []);
+  const totalItems = sections.reduce((s, sec) => s + (sec.items || []).length, 0);
 
   if (sections.length === 0) return null;
 
@@ -564,12 +563,12 @@ function TemaSelector({ sections, currentItemId, currentItem, onPick }) {
           {!tema
             ? 'Elige primero un tema'
             : sectionItems.length === 0
-              ? 'Este tema no tiene ejercicios ni exámenes'
-              : 'Elige un ejercicio o examen…'}
+              ? 'Este tema no tiene actividades'
+              : 'Elige una actividad…'}
         </option>
         {sectionItems.map((it) => (
           <option key={it.id} value={it.id}>
-            {it.kind === 'exam' ? '📝 ' : '✎ '}{it.title}
+            {(KIND_ICON[it.kind] || '·')} {it.title}
           </option>
         ))}
       </select>
@@ -584,7 +583,7 @@ function TemaSelector({ sections, currentItemId, currentItem, onPick }) {
       )}
 
       <span className="font-mono text-[10px] text-marron-soft ml-auto">
-        {totalCorrectable} ejercicios en el temario
+        {totalItems} {totalItems === 1 ? 'actividad' : 'actividades'} en el temario
       </span>
     </div>
   );

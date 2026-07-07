@@ -423,10 +423,13 @@ function seedAnswerKeyFromPayload(payload) {
 
 // Selector Tema → Ejercicio del temario. Permite al profe entrar en el
 // corrector sin haber pulsado "Corregir" desde el temario y aún así organizar
-// sus correcciones por los mismos temas y ejercicios que ya tiene creados.
-// Filtra items por kind ∈ {exercise, exam} (los que tiene sentido corregir).
+// sus correcciones por los mismos temas y actividades que ya tiene creados.
+// Muestra TODOS los items del tema (ejercicio, examen, dinámica, presentación,
+// documentación) — el profesor decide sobre cuál trabajar en el corrector.
 function TemaSelector({ sections, currentItemId, currentItem, onPick }) {
-  const CORRECTABLE_KINDS = ['exercise', 'exam'];
+  const KIND_ICON = {
+    exam: '📝', exercise: '✎', dynamic: '◆', presentation: '▥', documentation: '▤',
+  };
 
   // Sección actual derivada del item elegido.
   const currentSectionId =
@@ -437,11 +440,10 @@ function TemaSelector({ sections, currentItemId, currentItem, onPick }) {
   const [tema, setTema] = useState(currentSectionId);
   useEffect(() => { setTema(currentSectionId); }, [currentSectionId]);
 
-  const sectionItems = (sections.find((s) => s.id === tema)?.items || [])
-    .filter((it) => CORRECTABLE_KINDS.includes(it.kind));
+  const sectionItems = (sections.find((s) => s.id === tema)?.items || []);
 
-  const totalCorrectable = sections.reduce(
-    (s, sec) => s + (sec.items || []).filter((it) => CORRECTABLE_KINDS.includes(it.kind)).length,
+  const totalItems = sections.reduce(
+    (s, sec) => s + (sec.items || []).length,
     0
   );
 
@@ -472,12 +474,12 @@ function TemaSelector({ sections, currentItemId, currentItem, onPick }) {
           {!tema
             ? 'Elige primero un tema'
             : sectionItems.length === 0
-              ? 'Este tema no tiene ejercicios ni exámenes'
-              : 'Elige un ejercicio o examen…'}
+              ? 'Este tema no tiene actividades'
+              : 'Elige una actividad…'}
         </option>
         {sectionItems.map((it) => (
           <option key={it.id} value={it.id}>
-            {it.kind === 'exam' ? '📝 ' : '✎ '}{it.title}
+            {(KIND_ICON[it.kind] || '·')} {it.title}
           </option>
         ))}
       </select>
@@ -493,7 +495,7 @@ function TemaSelector({ sections, currentItemId, currentItem, onPick }) {
       )}
 
       <span className="font-mono text-[10px] text-marron-soft ml-auto">
-        {totalCorrectable} ejercicios en el temario
+        {totalItems} {totalItems === 1 ? 'actividad' : 'actividades'} en el temario
       </span>
     </div>
   );
