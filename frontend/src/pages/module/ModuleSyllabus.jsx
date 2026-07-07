@@ -62,6 +62,10 @@ export default function ModuleSyllabus() {
 
   const addSection    = useMutation({ mutationFn: (title) => syllabusApi.createSection(moduleId, { title }), onSuccess: invalidate });
   const patchSection  = useMutation({ mutationFn: ({ id, data }) => syllabusApi.updateSection(id, data),    onSuccess: invalidate });
+  const reorderSections = useMutation({
+    mutationFn: (sectionIds) => syllabusApi.reorderSections(moduleId, sectionIds),
+    onSuccess: invalidate,
+  });
   const removeSection = useMutation({ mutationFn: (id) => syllabusApi.deleteSection(id),                    onSuccess: invalidate });
   const addItem       = useMutation({ mutationFn: ({ sectionId, data }) => syllabusApi.createItem(sectionId, data), onSuccess: invalidate });
   const patchItem     = useMutation({ mutationFn: ({ id, data }) => syllabusApi.updateItem(id, data),       onSuccess: invalidate });
@@ -94,13 +98,17 @@ export default function ModuleSyllabus() {
     );
   };
 
+  // T4 · Reorden atómico: en vez de disparar dos PATCH paralelos (que podían
+  // dejar sort_order inconsistente si uno fallaba), construimos el nuevo
+  // orden completo del array y lo mandamos en una única llamada al endpoint
+  // transaccional /modules/:moduleId/syllabus/reorder.
   const handleMoveSection = (idx, dir) => {
+    if (reorderSections.isPending) return;
     const targetIdx = idx + dir;
     if (targetIdx < 0 || targetIdx >= sections.length) return;
-    const a = sections[idx];
-    const b = sections[targetIdx];
-    patchSection.mutate({ id: a.id, data: { sort_order: b.sort_order } });
-    patchSection.mutate({ id: b.id, data: { sort_order: a.sort_order } });
+    const reordered = [...sections];
+    [reordered[idx], reordered[targetIdx]] = [reordered[targetIdx], reordered[idx]];
+    reorderSections.mutate(reordered.map((s) => s.id));
   };
 
   if (isLoading) {
@@ -286,24 +294,39 @@ export default function ModuleSyllabus() {
         )}
       </Modal>
 
-      {/* Modal de renombrar */}
+      {/* Modal de renombrar — T11 · Espera al onSuccess/onError antes de
+          cerrar. Antes se cerraba de inmediato con setRenaming(null) tras
+          disparar la mutación, así que un 404 (item borrado en otra pestaña)
+          se perdía silenciosamente. Ahora muestra el error y el profe puede
+          reintentar o cancelar. */}
       <Modal
         open={!!renaming}
-        onClose={() => setRenaming(null)}
+        onClose={() => {
+          if (patchSection.isPending || patchItem.isPending) return;
+          setRenaming(null);
+          patchSection.reset();
+          patchItem.reset();
+        }}
         title={renaming?.kind === 'section' ? 'Renombrar tema' : 'Renombrar item'}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setRenaming(null)}>Cancelar</Button>
             <Button
+              variant="ghost"
+              onClick={() => { setRenaming(null); patchSection.reset(); patchItem.reset(); }}
+              disabled={patchSection.isPending || patchItem.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              loading={patchSection.isPending || patchItem.isPending}
               onClick={() => {
                 const title = renaming.title.trim();
                 if (!title) return;
-                if (renaming.kind === 'section') {
-                  patchSection.mutate({ id: renaming.id, data: { title } });
-                } else {
-                  patchItem.mutate({ id: renaming.id, data: { title } });
-                }
-                setRenaming(null);
+                const mut = renaming.kind === 'section' ? patchSection : patchItem;
+                mut.mutate(
+                  { id: renaming.id, data: { title } },
+                  { onSuccess: () => setRenaming(null) }
+                );
               }}
             >
               Guardar
@@ -312,13 +335,21 @@ export default function ModuleSyllabus() {
         }
       >
         {renaming && (
-          <input
-            type="text"
-            value={renaming.title}
-            onChange={(e) => setRenaming({ ...renaming, title: e.target.value })}
-            className="w-full px-3 py-2 bg-papel border border-linea font-mono text-[13px] text-tinta focus:outline-none focus:border-marino"
-            autoFocus
-          />
+          <>
+            <input
+              type="text"
+              value={renaming.title}
+              onChange={(e) => setRenaming({ ...renaming, title: e.target.value })}
+              className="w-full px-3 py-2 bg-papel border border-linea font-mono text-[13px] text-tinta focus:outline-none focus:border-marino"
+              autoFocus
+              disabled={patchSection.isPending || patchItem.isPending}
+            />
+            {(patchSection.isError || patchItem.isError) && (
+              <div className="mt-2 px-3 py-2 border border-granate/40 bg-granate/5 text-granate font-mono text-[11px]">
+                Error al guardar. Puede que este elemento haya sido borrado en otra ventana. Refresca el temario.
+              </div>
+            )}
+          </>
         )}
       </Modal>
     </div>

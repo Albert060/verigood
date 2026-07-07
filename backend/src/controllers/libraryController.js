@@ -17,6 +17,25 @@ const createItem = async (req, res) => {
       return res.status(400).json({ error: 'El título es demasiado largo (máx. 255)' });
     }
 
+    // T15 · El módulo debe estar contratado por la org antes de aceptar
+    // recursos etiquetados con él. Sin esta comprobación se podían crear
+    // library_items con moduleId de módulos NO contratados — no era
+    // explotable directamente pero rompía el modelo (biblioteca podría
+    // mostrar módulos que el centro no debería estar viendo).
+    // Superadmin pasa por diseño (opera sin restricción de contratos).
+    if (req.user.role !== 'superadmin') {
+      const { rows: [active] } = await query(
+        `SELECT 1 FROM organization_modules WHERE organization_id = $1 AND module_id = $2`,
+        [req.user.organization_id, moduleId]
+      );
+      if (!active) {
+        return res.status(403).json({
+          error: 'Módulo no contratado por el centro',
+          code: 'MODULE_NOT_CONTRACTED',
+        });
+      }
+    }
+
     const result = await query(
       `INSERT INTO library_items
          (organization_id, teacher_id, module_id, tool_key, kind, title, payload, metadata)
@@ -143,6 +162,23 @@ const updateItem = async (req, res) => {
     const { id } = req.params;
     const { finalScore, approvedAt, studentName } = req.body || {};
 
+    // T6 · Validación estricta de finalScore: no aceptamos strings vacíos,
+    // NaN ni negativos. Antes `Number('')` daba 0 y el alumno acababa con
+    // 0/10 silenciosamente.
+    if (finalScore !== undefined) {
+      const n = Number(finalScore);
+      if (finalScore === '' || finalScore === null || Number.isNaN(n) || n < 0) {
+        return res.status(400).json({
+          error: 'finalScore inválido — debe ser un número ≥ 0',
+          code: 'INVALID_SCORE',
+        });
+      }
+    }
+    // studentName con límite razonable para evitar guardar novelas en JSONB.
+    if (studentName !== undefined && String(studentName).length > 120) {
+      return res.status(400).json({ error: 'studentName demasiado largo (máx. 120)' });
+    }
+
     const { rows: [row] } = await query(
       `SELECT metadata FROM library_items
         WHERE id = $1 AND organization_id = $2`,
@@ -153,7 +189,7 @@ const updateItem = async (req, res) => {
     const metadata = { ...(row.metadata || {}) };
     if (finalScore   !== undefined) metadata.finalScore   = Number(finalScore);
     if (approvedAt   !== undefined) metadata.approvedAt   = approvedAt;
-    if (studentName  !== undefined) metadata.studentName  = studentName;
+    if (studentName  !== undefined) metadata.studentName  = String(studentName).slice(0, 120);
 
     const { rows: [saved] } = await query(
       `UPDATE library_items SET metadata = $1

@@ -9,6 +9,7 @@ const { generateDynamics } = require('../services/dynamicsService');
 const { generatePresentation } = require('../services/presentationsService');
 const { query } = require('../config/database');
 const { notify, notifyRole, TYPES: NOTIF_TYPES } = require('../services/notifyService');
+const { validateUploadMagicBytes } = require('../utils/fileValidation');
 
 const router = express.Router();
 
@@ -159,7 +160,7 @@ router.delete('/exams/:id', authenticate, requireModule('cambridge'), async (req
 });
 
 // ── POST /cambridge/ocr/correct ──────────────────────────────
-router.post('/ocr/correct', authenticate, requireModule('cambridge'), upload.single('examImage'), async (req, res) => {
+router.post('/ocr/correct', authenticate, requireModule('cambridge'), upload.single('examImage'), validateUploadMagicBytes, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Imagen requerida' });
 

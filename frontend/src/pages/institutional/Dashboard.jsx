@@ -50,13 +50,14 @@ export default function InstitutionalDashboard() {
 
   // Al entrar al dashboard invalidamos la cache una vez para garantizar que
   // las acciones que el usuario haya hecho en otra pestaña/ventana se reflejen
-  // sin esperar al siguiente refetchInterval ni depender del focus.
+  // sin esperar al siguiente refetchInterval ni depender del focus. T18 · qc
+  // es una referencia estable de React Query — añadirla como dep no dispara
+  // re-runs.
   useEffect(() => {
     if (orgId) {
       qc.invalidateQueries({ queryKey: ['org-stats', orgId] });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+  }, [orgId, qc]);
 
   const dismissOnboarding = useMutation({
     mutationFn: () => orgApi.completeOnboarding(orgId),

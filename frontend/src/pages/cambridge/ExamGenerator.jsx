@@ -36,8 +36,14 @@ export default function ExamGenerator() {
   });
   const [result, setResult] = useState(null);
   const [savedId, setSavedId] = useState(null);
+  // T3 · Estados independientes para library-save vs syllabus-link.
+  const [linking, setLinking] = useState(false); // en curso
+  const [linkError, setLinkError] = useState(null); // último error (para reintento)
 
   // Al llegar con ?topic=... precargamos el campo de tema del formulario.
+  // T18 · Disable INTENCIONADO: no queremos re-precargar si el usuario
+  // limpia el input manualmente (form.topic → ''). Si añadimos form.topic
+  // como dep, borrar el campo devolvería el valor de la URL en bucle.
   useEffect(() => {
     if (topicFromUrl && !form.topic) {
       setForm((f) => ({ ...f, topic: topicFromUrl }));
@@ -51,32 +57,46 @@ export default function ExamGenerator() {
   // (badge verde CONTRATADO/EXAMEN + botón Corregir). Best-effort: si algo
   // falla, seguimos mostrando el resultado al usuario.
   const linkToSyllabus = async (exam) => {
+    if (linking) return; // T3 · previene doble-lanzamiento por doble clic
+    setLinking(true);
+    setLinkError(null);
+    let libraryItemId = savedId;
     try {
-      const title = `Examen Cambridge ${exam.level}${exam.topic ? ` — ${exam.topic}` : ''}`.slice(0, 255);
-      const { data: created } = await libraryApi.create({
-        moduleId: 'cambridge',
-        toolKey: 'cambridge:exam',
-        kind: 'exam',
-        title,
-        payload: exam,
-        metadata: {
-          level: exam.level,
-          topic: exam.topic || '',
-          totalQuestions: exam.totalQuestions,
-          exerciseTypes: form.exerciseTypes,
-          source: form.source,
-          autoSaved: true,
-        },
-      });
-      setSavedId(created.id);
-      qc.invalidateQueries({ queryKey: ['library'] });
+      // Paso 1: si aún no está guardado, persistimos en biblioteca.
+      if (!libraryItemId) {
+        const title = `Examen Cambridge ${exam.level}${exam.topic ? ` — ${exam.topic}` : ''}`.slice(0, 255);
+        const { data: created } = await libraryApi.create({
+          moduleId: 'cambridge',
+          toolKey: 'cambridge:exam',
+          kind: 'exam',
+          title,
+          payload: exam,
+          metadata: {
+            level: exam.level,
+            topic: exam.topic || '',
+            totalQuestions: exam.totalQuestions,
+            exerciseTypes: form.exerciseTypes,
+            source: form.source,
+            autoSaved: true,
+          },
+        });
+        libraryItemId = created.id;
+        setSavedId(libraryItemId);
+        qc.invalidateQueries({ queryKey: ['library'] });
+      }
+      // Paso 2: si veníamos del temario, linkeamos.
       if (syllabusItemId) {
-        await syllabusApi.updateItem(syllabusItemId, { library_item_id: created.id });
+        await syllabusApi.updateItem(syllabusItemId, { library_item_id: libraryItemId });
         qc.invalidateQueries({ queryKey: ['syllabus'] });
         qc.invalidateQueries({ queryKey: ['syllabus-item', syllabusItemId] });
       }
     } catch (err) {
-      console.warn('Cambridge exam auto-save/link failed (non-fatal):', err.message);
+      // T3 · propagamos el error a la UI en vez de solo console.warn
+      const msg = err?.response?.data?.error || err.message || 'Error al vincular con el temario';
+      console.warn('Cambridge exam auto-save/link failed:', msg);
+      setLinkError(msg);
+    } finally {
+      setLinking(false);
     }
   };
 
@@ -259,17 +279,35 @@ export default function ExamGenerator() {
             )}
           </div>
 
-          {/* Estado del guardado — el examen se persiste solo en biblioteca
-              (y se linkea al temario si veníamos desde ahí). */}
-          <div className="mb-3 flex items-center gap-2 font-mono text-[11px]">
-            {savedId ? (
-              <span className="px-2 py-0.5 border border-[#7DC49B] bg-[#EBF5EF] text-[#1A5C35]">
-                ✓ Guardado en biblioteca{syllabusItemId ? ' · vinculado al temario' : ''}
-              </span>
-            ) : (
+          {/* T3 · Estado real del guardado. Tres estados posibles:
+                - linking: en curso (spinner).
+                - linkError: falló algo (mostrar aviso + botón reintentar).
+                - savedId sin error: éxito.
+              El "· vinculado al temario" solo se muestra si el link no
+              produjo error, ya no es un falso positivo. */}
+          <div className="mb-3 flex items-center gap-2 flex-wrap font-mono text-[11px]">
+            {linking && (
               <span className="px-2 py-0.5 border border-linea text-marron-soft">
                 Guardando…
               </span>
+            )}
+            {!linking && savedId && !linkError && (
+              <span className="px-2 py-0.5 border border-[#7DC49B] bg-[#EBF5EF] text-[#1A5C35]">
+                ✓ Guardado en biblioteca{syllabusItemId ? ' · vinculado al temario' : ''}
+              </span>
+            )}
+            {!linking && linkError && (
+              <>
+                <span className="px-2 py-0.5 border border-granate bg-[#FCF0F0] text-granate">
+                  ✗ {savedId ? 'Guardado pero sin vincular' : 'Error al guardar'}: {linkError}
+                </span>
+                <button
+                  onClick={() => linkToSyllabus(result)}
+                  className="px-2 py-0.5 border border-marino text-marino hover:bg-marino hover:text-papel transition-colors"
+                >
+                  Reintentar
+                </button>
+              </>
             )}
           </div>
 
@@ -283,7 +321,7 @@ export default function ExamGenerator() {
               filename={`cambridge-${result.level}-${Date.now()}`}
               size="lg"
             />
-            <Button variant="ghost" onClick={() => { setStep(0); setResult(null); setSavedId(null); }}>
+            <Button variant="ghost" onClick={() => { setStep(0); setResult(null); setSavedId(null); setLinkError(null); }}>
               Nuevo examen
             </Button>
           </div>

@@ -163,7 +163,7 @@ export default function ExamsList() {
       )}
 
       {!isLoading && exams.length > 0 && (
-        <div className="bg-card-bg border border-linea shadow-card">
+        <div className="bg-card-bg border border-linea shadow-card overflow-x-auto">
           <table className="vg-table w-full">
             <thead>
               <tr>

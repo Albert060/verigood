@@ -55,14 +55,25 @@ export default function ModuleOcrPage() {
   // del item, o desde el payload del library_item enlazado si existe.
   const [answerKey, setAnswerKey] = useState('');
   const [answerKeyDirty, setAnswerKeyDirty] = useState(false);
+  // T2 · Ref al último id conocido — evita re-hidratar cuando lo único que
+  // cambia es un refetch del mismo item (p. ej. tras saveAnswerKey.onSuccess).
+  const lastLoadedItemId = useRef(null);
   useEffect(() => {
     if (!item) return;
+    // T2 · Sólo hidratar cuando cambia el ID del item (nueva selección) o es
+    // la primera vez. Si el profe está tecleando (`answerKeyDirty === true`)
+    // NO sobrescribimos su edición aunque llegue un refetch — solución al
+    // bug de pérdida de datos silenciosa detectado en la auditoría.
+    const sameItem = lastLoadedItemId.current === item.id;
+    if (sameItem && answerKeyDirty) return;
+
     const fromMetadata = item.metadata?.answer_key;
     const fromLibrary  = item.library_payload
       ? seedAnswerKeyFromPayload(item.library_payload)
       : '';
     setAnswerKey(fromMetadata || fromLibrary || '');
     setAnswerKeyDirty(false);
+    lastLoadedItemId.current = item.id;
 
     // Autoprecarga del curso desde el payload/metadata del library_item.
     // Los seeds guardan level/course en varias ubicaciones típicas, así que
@@ -76,8 +87,12 @@ export default function ModuleOcrPage() {
     if (guessed && !form.course) {
       setForm((f) => ({ ...f, course: guessed }));
     }
+    // T18 · Disable INTENCIONADO: `answerKeyDirty` y `form.course` NO van en
+    // deps aunque el efecto los lee. Añadirlos rehidrataría el state cada
+    // vez que el profe edita la textarea o elige un curso — perdiendo su
+    // trabajo (bug T2 de Sprint 1).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item]);
+  }, [item?.id, item?.metadata?.answer_key, item?.library_payload]);
 
   const saveAnswerKey = useMutation({
     mutationFn: () => syllabusApi.updateItem(syllabusItemId, {
@@ -261,6 +276,7 @@ export default function ModuleOcrPage() {
               onSave={() => saveAnswerKey.mutate()}
               saving={saveAnswerKey.isPending}
               ready={referenceReady}
+              correcting={isPending}
             />
           ) : (
             <StandaloneConfigPanel
@@ -501,7 +517,7 @@ function TemaSelector({ sections, currentItemId, currentItem, onPick }) {
   );
 }
 
-function ReferenceKeyPanel({ item, answerKey, dirty, onChange, onSave, saving, ready }) {
+function ReferenceKeyPanel({ item, answerKey, dirty, onChange, onSave, saving, ready, correcting = false }) {
   // Etiquetas dinámicas según el kind del item — así el panel no dice
   // "EJERCICIO" cuando estás corrigiendo una dinámica o una presentación.
   const KIND_LABEL = {
@@ -554,18 +570,27 @@ function ReferenceKeyPanel({ item, answerKey, dirty, onChange, onSave, saving, r
               '1. Enunciado…\n   → Respuesta correcta\n\n2. Enunciado…\n   → Respuesta correcta'
             }
             rows={16}
-            className="w-full px-3 py-2 bg-papel border border-linea font-mono text-[12px] text-tinta focus:outline-none focus:border-marino resize-y"
+            disabled={correcting}
+            className="w-full px-3 py-2 bg-papel border border-linea font-mono text-[12px] text-tinta focus:outline-none focus:border-marino resize-y disabled:opacity-60 disabled:cursor-not-allowed"
           />
+          {/* T5 · Aviso mientras hay una corrección en vuelo: la clave está
+              bloqueada porque cambiarla justo antes de que llegue el
+              resultado provocaría ambigüedad ("¿con qué clave se corrigió?"). */}
+          {correcting && (
+            <div className="mt-1 font-mono text-[10px] text-[#7A5A1E]">
+              La clave está bloqueada mientras se corrige la foto del alumno actual.
+            </div>
+          )}
           <div className="mt-2 flex items-center gap-2">
             <Button
               onClick={onSave}
               loading={saving}
-              disabled={!dirty}
+              disabled={!dirty || correcting}
               variant={ready ? 'ghost' : 'primary'}
             >
               {ready ? 'Guardar cambios' : 'Validar corrección de referencia'}
             </Button>
-            {ready && !dirty && (
+            {ready && !dirty && !correcting && (
               <span className="font-mono text-[10px] text-marron-soft">
                 Las próximas fotos se corregirán contra esta clave.
               </span>
@@ -832,26 +857,52 @@ function ResultView({
       {/* B5 — Visto bueno + puntuación final del profe */}
       <Card className="p-4">
         <SectionLabel className="mb-2">PUNTUACIÓN FINAL DEL PROFESOR</SectionLabel>
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-1">
-            <input
-              type="number"
-              value={finalScoreOverride}
-              onChange={(e) => setFinalScoreOverride(e.target.value)}
-              min={0}
-              max={result.maxScore}
-              step="0.25"
-              className="w-20 px-3 py-1.5 bg-papel border border-linea font-mono text-[13px] text-tinta focus:outline-none focus:border-marino"
-            />
-            <span className="font-mono text-[12px] text-marron-soft">/ {result.maxScore}</span>
-          </div>
-          <Button onClick={() => approve.mutate()} loading={approve.isPending} disabled={result.approvedAt}>
-            {result.approvedAt ? '✓ Visto bueno dado' : 'Dar visto bueno'}
-          </Button>
-          <span className="font-mono text-[10px] text-marron-soft">
-            Ajusta la nota si el criterio de la IA no encaja con el tuyo.
-          </span>
-        </div>
+        {(() => {
+          // T6 · Validación local del input antes de habilitar el botón.
+          // Con string vacío `Number('')` daba 0 y se persistía silenciosamente.
+          const rawScore = finalScoreOverride;
+          const parsedScore = Number(rawScore);
+          const scoreInvalid =
+            rawScore === '' || rawScore === null ||
+            Number.isNaN(parsedScore) ||
+            parsedScore < 0 ||
+            parsedScore > result.maxScore;
+          return (
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={finalScoreOverride}
+                  onChange={(e) => setFinalScoreOverride(e.target.value)}
+                  min={0}
+                  max={result.maxScore}
+                  step="0.25"
+                  className="w-20 px-3 py-1.5 bg-papel border border-linea font-mono text-[13px] text-tinta focus:outline-none focus:border-marino"
+                />
+                <span className="font-mono text-[12px] text-marron-soft">/ {result.maxScore}</span>
+              </div>
+              {/* T8 · Permitir re-aprobar tras cambiar la nota. Antes se
+                  bloqueaba con disabled={result.approvedAt} — así no había
+                  manera de guardar un ajuste posterior. */}
+              <Button
+                onClick={() => approve.mutate()}
+                loading={approve.isPending}
+                disabled={scoreInvalid}
+              >
+                {result.approvedAt ? 'Re-guardar visto bueno' : 'Dar visto bueno'}
+              </Button>
+              {scoreInvalid ? (
+                <span className="font-mono text-[10px] text-granate">
+                  Introduce una nota entre 0 y {result.maxScore}.
+                </span>
+              ) : (
+                <span className="font-mono text-[10px] text-marron-soft">
+                  Ajusta la nota si el criterio de la IA no encaja con el tuyo.
+                </span>
+              )}
+            </div>
+          );
+        })()}
       </Card>
 
       <div className="flex flex-wrap gap-3">

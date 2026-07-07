@@ -170,6 +170,7 @@ export default function InstitutionalStats() {
                 Sin actividad por profesor este mes.
               </p>
             ) : (
+              <div className="overflow-x-auto">
               <table className="vg-table">
                 <thead>
                   <tr>
@@ -192,6 +193,7 @@ export default function InstitutionalStats() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </>

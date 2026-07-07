@@ -692,10 +692,25 @@ POST /api/modules/:moduleId/ocr/correct                      # multipart examIma
 
 ### Biblioteca
 ```
-POST   /api/library/items
+POST   /api/library/items                                    # 403 MODULE_NOT_CONTRACTED si moduleId no está en organization_modules
 GET    /api/library/items?search&module&kind&from&to
 GET    /api/library/items/:id
+PATCH  /api/library/items/:id                                # metadata: finalScore | approvedAt | studentName (validados)
 DELETE /api/library/items/:id
+```
+
+### Temario del módulo (syllabus)
+```
+GET    /api/modules/:moduleId/syllabus                       # temario completo (temas + items + library_items enlazados)
+POST   /api/modules/:moduleId/syllabus/sections              # crear tema
+PATCH  /api/modules/:moduleId/syllabus/reorder               # reorden atómico { sectionIds: [uuid, ...] } en transacción
+PATCH  /api/syllabus/sections/:sectionId                     # renombrar / mover
+DELETE /api/syllabus/sections/:sectionId
+POST   /api/syllabus/sections/:sectionId/items               # crear item (kind ∈ {exercise, presentation, dynamic, exam, documentation})
+GET    /api/syllabus/items/:itemId                           # item + library_payload enlazado
+GET    /api/syllabus/items/:itemId/corrections               # correcciones OCR agrupadas por syllabusItemId
+PATCH  /api/syllabus/items/:itemId                           # library_item_id se valida cross-tenant (403 CROSS_TENANT si de otra org)
+DELETE /api/syllabus/items/:itemId                           # cascade lógico: correcciones OCR huérfanas pierden metadata.syllabusItemId
 ```
 
 ### Notificaciones in-app
@@ -979,6 +994,55 @@ nginx -t && systemctl reload nginx
 ```
 
 SSL con Let's Encrypt: `certbot --nginx -d verigood.es -d www.verigood.es`
+
+---
+
+## Blindaje multi-tenant y seguridad
+
+Patrones defensivos añadidos tras auditoría. **Cualquier feature nueva debe respetarlos**.
+
+### Boundary de organización
+
+- **Nunca aceptar un id de otra tabla del body sin verificar su org**. Ej: `syllabus_items.library_item_id` debe pertenecer a la misma org que el temario destino. Endpoints afectados: `createItem`, `updateItem` en `syllabusController.js`. Si no coincide → `403 CROSS_TENANT`.
+- **Helper `resolveTargetOrg(req)`** (`syllabusController.js`): usa `req.user.organization_id` por defecto y **solo** acepta el fallback `req.query.organizationId` cuando `role === 'superadmin'`. Si añades un nuevo rol sin org que no sea superadmin, la función lo bloquea con explicitud. Reutilízalo en cualquier endpoint del temario que necesite resolver el org objetivo.
+- **`library_items.createItem` valida contrato del módulo**: exige que `moduleId` esté en `organization_modules` de la org del profe. `403 MODULE_NOT_CONTRACTED` si no. Superadmin exento.
+
+### Uploads
+
+- `backend/src/utils/fileValidation.js` expone `detectFileKind(buffer)` (detecta PNG/JPEG/WebP/PDF por firma binaria) y middleware `validateUploadMagicBytes`. Aplicado en `POST /api/modules/:moduleId/ocr/correct` y `POST /api/cambridge/ocr/correct`. `fileFilter` de multer no basta — el `mimetype` lo declara el cliente y se puede falsificar.
+- Cualquier nuevo endpoint que reciba archivos debe encadenar `upload.single(...)` seguido de `validateUploadMagicBytes` antes del handler.
+
+### Rate limiting
+
+`index.js` mantiene dos limiters:
+- `generalLimiter` (100 req / 15 min): aplicado globalmente a `/api/`.
+- `aiLimiter` (30 req / 15 min): aplicado a rutas que consumen IA o Anthropic:
+  - `/api/cambridge`, `/api/lengua`, `/api/matematicas`, `/api/medio`
+  - `/api/modules/:m/tools/:t/run` (regex)
+  - `/api/modules/:m/ocr/correct` (regex)
+  - `/api/organizations/:orgId/anthropic` (regex) — el PUT valida la clave contra Anthropic con un ping real.
+
+### Integridad de datos y cascade lógico
+
+- `syllabus_items.library_item_id`: FK con `ON DELETE SET NULL` — al borrar un `library_item`, el slot del temario queda vacío pero persiste.
+- Las **correcciones OCR** son `library_items` (kind='ocr') con `metadata.syllabusItemId` como pointer JSONB, sin FK real. Al borrar un `syllabus_item`, `syllabusController.deleteItem` ejecuta `UPDATE library_items SET metadata = metadata - 'syllabusItemId' …` antes del DELETE. Las correcciones **no se borran** (mantienen su valor pedagógico en la biblioteca del centro), solo pierden el enlace huérfano.
+- El endpoint `PATCH /modules/:moduleId/syllabus/reorder` reordena todos los temas en una **transacción** (`BEGIN/COMMIT/ROLLBACK`). Antes se disparaban dos PATCH paralelos y un fallo intermedio dejaba `sort_order` inconsistente. Ver `handleMoveSection` en `ModuleSyllabus.jsx` como caller.
+
+### Validaciones de payload
+
+- `libraryController.updateItem` (usado por el "Dar visto bueno" del corrector OCR): rechaza `finalScore` vacío, NaN o negativo con `400 INVALID_SCORE`. Limita `studentName` a 120 caracteres. Antes `Number('')` daba 0 y se persistía 0/10 silenciosamente.
+- `organizationsController.updateModules` (endpoint DEPRECATED que escribe en `organizations.active_modules[]`): filtra por `enum_range(NULL::module_type)` en runtime en vez de lista hardcodeada. Valida que `activeModules` sea array.
+- Frontend: en cada correction result, el botón "Dar visto bueno" queda deshabilitado si el input `finalScore` es inválido (con aviso rojo). Ya no se bloquea permanentemente tras el primer approve — el copy cambia a "Re-guardar visto bueno" para clarificar.
+
+### UX OCR — evitar ambigüedades
+
+- Mientras hay una corrección OCR en vuelo (`isPending`), el `ReferenceKeyPanel` recibe `correcting={true}` que **deshabilita la textarea de la clave y el botón Validar**. Sin esto, editar la clave durante la corrección generaba dudas de "¿con qué clave se corrigió al alumno actual?".
+- El `useEffect([item?.id, ...])` que rehidrata `answerKey` desde el backend usa un `useRef(lastLoadedItemId)`: si el item es el mismo que ya se cargó y el profe está tecleando (`answerKeyDirty === true`), NO sobrescribe su edición. Antes cualquier refetch de la query invalidaba en curso perdía el trabajo del profe.
+- En Cambridge (`ExamGenerator`, `PresentationGenerator`), el auto-save + link al temario mantiene 3 estados: `linking` (en curso, píldora gris), `savedId && !linkError` (éxito, píldora verde), `linkError` (fallo, píldora granate + botón **Reintentar**). Ya no hay falso positivo "vinculado al temario" cuando el link falló silenciosamente.
+
+### Accesibilidad
+
+- `Modal` (`components/ui/index.jsx`) tiene `role="dialog"`, `aria-modal="true"`, `aria-labelledby="vg-modal-title"`. Botón `×` con `aria-label="Cerrar modal"` y el glifo envuelto en `<span aria-hidden="true">`. Sigue este patrón en cualquier control con solo icono (☰, ↻, ✕, etc.): `aria-label` en el botón, `aria-hidden` en el glifo.
 
 ---
 

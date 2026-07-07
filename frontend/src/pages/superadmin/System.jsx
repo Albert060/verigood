@@ -22,7 +22,7 @@ export default function SuperadminSystem() {
     <div className="animate-slide-in">
       <PageHeader title="Configuración del sistema" subtitle="PARÁMETROS GLOBALES" romanNum="§ IV" />
 
-      <div className="grid grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Toggles */}
         <div className="bg-card-bg border border-linea shadow-card card-fold p-5">
           <SectionLabel className="mb-3">SERVICIOS</SectionLabel>
@@ -47,7 +47,7 @@ export default function SuperadminSystem() {
         </div>
 
         {/* Plan limits */}
-        <div className="bg-card-bg border border-linea shadow-card card-fold p-5">
+        <div className="bg-card-bg border border-linea shadow-card card-fold p-5 overflow-x-auto">
           <SectionLabel className="mb-3">LÍMITES POR PLAN / MES</SectionLabel>
           <table className="vg-table">
             <thead>

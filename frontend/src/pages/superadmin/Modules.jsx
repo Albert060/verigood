@@ -58,15 +58,25 @@ export default function SuperadminModules() {
 
   const selected = catalog.find((m) => m.id === selectedId) || null;
 
-  // Mutaciones reutilizadas — el backend acepta superadmin en ambos endpoints.
-  const invalidateOrgs = () => qc.invalidateQueries({ queryKey: ['superadmin-orgs-modules'] });
+  // T9 · Al toggle desde la matriz global refrescamos la matriz + la tabla
+  // de organizaciones + la vista `['modules', 'org', orgId]` que consumen el
+  // admin de centro y varios modals internos — así si esas pantallas están
+  // abiertas en otra pestaña se sincronizan sin refetch manual.
   const activate   = useMutation({
     mutationFn: ({ orgId, moduleId }) => modulesApi.activate(orgId, moduleId),
-    onSuccess: invalidateOrgs,
+    onSuccess: (_, { orgId }) => {
+      qc.invalidateQueries({ queryKey: ['superadmin-orgs-modules'] });
+      qc.invalidateQueries({ queryKey: ['superadmin-orgs'] });
+      qc.invalidateQueries({ queryKey: ['modules', 'org', orgId] });
+    },
   });
   const deactivate = useMutation({
     mutationFn: ({ orgId, moduleId }) => modulesApi.deactivate(orgId, moduleId),
-    onSuccess: invalidateOrgs,
+    onSuccess: (_, { orgId }) => {
+      qc.invalidateQueries({ queryKey: ['superadmin-orgs-modules'] });
+      qc.invalidateQueries({ queryKey: ['superadmin-orgs'] });
+      qc.invalidateQueries({ queryKey: ['modules', 'org', orgId] });
+    },
   });
 
   const handleToggle = (org, currentlyOn) => {

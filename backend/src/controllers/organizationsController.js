@@ -254,6 +254,15 @@ const getStats = async (req, res) => {
 };
 
 // PATCH /organizations/:orgId/modules — toggle modules (admin only)
+// T19 · Antes usaba una lista hardcodeada `['cambridge', 'espanol',
+// 'matematicas', 'medio', 'oposiciones']` que estaba desincronizada del
+// catálogo real. Este endpoint escribe en `organizations.active_modules`,
+// que es un tipo ENUM `module_type` en PostgreSQL (deprecated según
+// CLAUDE.md; la fuente de verdad real vive en `organization_modules`).
+// Como el ENUM sigue restringiendo los valores aceptados, consultamos sus
+// variantes en tiempo de ejecución (`enum_range`) para no acoplarnos a una
+// lista estática que se va a desactualizar. También añadimos validación de
+// que activeModules sea array (antes null/objeto daba 500).
 const updateModules = async (req, res) => {
   try {
     const { orgId } = req.params;
@@ -262,13 +271,19 @@ const updateModules = async (req, res) => {
     if (req.user.role !== 'superadmin' && req.user.role !== 'admin_centro') {
       return res.status(403).json({ error: 'Acceso denegado' });
     }
-
     if (req.user.role === 'admin_centro' && req.user.organization_id !== orgId) {
       return res.status(403).json({ error: 'Acceso denegado' });
     }
+    if (!Array.isArray(activeModules)) {
+      return res.status(400).json({ error: 'activeModules debe ser un array' });
+    }
 
-    const validModules = ['cambridge', 'espanol', 'matematicas', 'medio', 'oposiciones'];
-    const filtered = activeModules.filter((m) => validModules.includes(m));
+    // Fuente de verdad: valores actualmente aceptados por el ENUM legacy.
+    const { rows: enumRows } = await query(
+      `SELECT unnest(enum_range(NULL::module_type))::text AS name`
+    );
+    const validSet = new Set(enumRows.map((r) => r.name));
+    const filtered = activeModules.filter((m) => validSet.has(m));
 
     const result = await query(
       `UPDATE organizations SET active_modules = $1, updated_at = NOW() WHERE id = $2 RETURNING active_modules`,
@@ -277,6 +292,7 @@ const updateModules = async (req, res) => {
 
     res.json({ activeModules: result.rows[0].active_modules });
   } catch (err) {
+    console.error('updateModules error:', err);
     res.status(500).json({ error: 'Error al actualizar módulos' });
   }
 };

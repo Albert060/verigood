@@ -73,6 +73,10 @@ app.use('/api/medio', aiLimiter);
 // Las ejecuciones de herramientas también consumen IA: mismo límite.
 app.use(/^\/api\/modules\/[^/]+\/tools\/[^/]+\/run$/, aiLimiter);
 app.use(/^\/api\/modules\/[^/]+\/ocr\/correct$/, aiLimiter);
+// T13 · PUT /organizations/:orgId/anthropic hace un ping real a Anthropic
+// para validar la clave — sin este limiter, un admin comprometido podría
+// abusar como proxy para consumir la API de otra cuenta a gran ritmo.
+app.use(/^\/api\/organizations\/[^/]+\/anthropic$/, aiLimiter);
 
 // ── Health check ─────────────────────────────────────────────
 app.get('/health', (req, res) => {

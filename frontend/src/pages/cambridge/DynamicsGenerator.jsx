@@ -84,7 +84,10 @@ export default function DynamicsGenerator() {
   };
 
   // A2 — play: guarda la dinámica si no lo está y abre el selector de tema.
+  // T7 · Guard contra doble clic — evita que dos ejecuciones concurrentes
+  // creen dos library_items para la misma dinámica.
   const handlePlay = async (index) => {
+    if (savingIdx === index) return;
     let libraryItemId = savedIds[index];
     if (!libraryItemId) {
       setSavingIdx(index);

@@ -97,10 +97,12 @@ export default function SuperadminOrganizations() {
           {orgs.length} {orgs.length === 1 ? 'resultado' : 'resultados'}
         </span>
         <button
+          type="button"
           onClick={() => refetch()}
+          aria-label="Recargar organizaciones"
           className="ml-auto font-mono text-[10px] text-marron-soft border border-linea px-2 py-1 hover:border-tinta hover:text-tinta transition-colors"
         >
-          ↻ Recargar
+          <span aria-hidden="true">↻</span> Recargar
         </button>
       </div>
 
@@ -296,7 +298,15 @@ function OrgModulesPanel({ orgId }) {
     [orgData]
   );
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['modules', 'org', orgId] });
+  // T9 · Invalidamos TODAS las queries afectadas cuando se toggle un módulo
+  // desde el modal del superadmin. La tabla de organizaciones (superadmin-orgs)
+  // muestra active_modules; la vista de módulos por org también cambia; y la
+  // matriz global superadmin-orgs-modules necesita refresco.
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['modules', 'org', orgId] });
+    qc.invalidateQueries({ queryKey: ['superadmin-orgs'] });
+    qc.invalidateQueries({ queryKey: ['superadmin-orgs-modules'] });
+  };
   const activate   = useMutation({ mutationFn: (moduleId) => modulesApi.activate(orgId, moduleId),   onSuccess: invalidate });
   const deactivate = useMutation({ mutationFn: (moduleId) => modulesApi.deactivate(orgId, moduleId), onSuccess: invalidate });
 

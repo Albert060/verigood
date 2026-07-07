@@ -49,18 +49,23 @@ export default function OcrCorrector() {
 
   const [answerKey, setAnswerKey] = useState('');
   const [answerKeyDirty, setAnswerKeyDirty] = useState(false);
+  // T2 · Mismo blindaje que en ModuleOcrPage: si el profe está tecleando
+  // (answerKeyDirty), un refetch del mismo item NO sobrescribe su edición.
+  const lastLoadedItemId = useRef(null);
   useEffect(() => {
     if (!item) return;
+    const sameItem = lastLoadedItemId.current === item.id;
+    if (sameItem && answerKeyDirty) return;
+
     const fromMetadata = item.metadata?.answer_key;
     const fromLibrary  = item.library_payload
       ? seedAnswerKeyFromPayload(item.library_payload)
       : '';
     setAnswerKey(fromMetadata || fromLibrary || '');
     setAnswerKeyDirty(false);
+    lastLoadedItemId.current = item.id;
 
     // Autoprecarga de la certificación desde el level del payload/metadata.
-    // Cambridge guarda 'B1', 'A2', … y el selector espera 'PET B1' etc.
-    // Mapa nivel → certificación estándar.
     const LEVEL_TO_CERT = {
       A2: 'KET A2', B1: 'PET B1', B2: 'FCE B2', C1: 'CAE C1', C2: 'CPE C2',
     };
@@ -68,8 +73,12 @@ export default function OcrCorrector() {
     if (lvl && LEVEL_TO_CERT[lvl]) {
       setForm((f) => ({ ...f, certification: LEVEL_TO_CERT[lvl] }));
     }
+    // T18 · Disable INTENCIONADO: `answerKeyDirty` NO va en deps aunque el
+    // efecto lo lee, porque si se añadiera cada `setAnswerKeyDirty(true)`
+    // por parte del profesor tirando de la textarea dispararía re-hidratación
+    // del state y perdería su edición (bug T2 arreglado en Sprint 1).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item]);
+  }, [item?.id, item?.metadata?.answer_key, item?.library_payload]);
 
   const saveAnswerKey = useMutation({
     mutationFn: () => syllabusApi.updateItem(syllabusItemId, {
@@ -196,6 +205,7 @@ export default function OcrCorrector() {
               onSave={() => saveAnswerKey.mutate()}
               saving={saveAnswerKey.isPending}
               ready={referenceReady}
+              correcting={isPending}
             />
           ) : (
             <StandaloneConfigPanel
@@ -340,7 +350,7 @@ function seedAnswerKeyFromPayload(payload) {
 
 // ── Subcomponentes ──────────────────────────────────────────────
 
-function ReferenceKeyPanel({ item, answerKey, dirty, onChange, onSave, saving, ready }) {
+function ReferenceKeyPanel({ item, answerKey, dirty, onChange, onSave, saving, ready, correcting = false }) {
   const KIND_LABEL = {
     exercise: 'EJERCICIO', exam: 'EXAMEN', dynamic: 'DINÁMICA',
     presentation: 'PRESENTACIÓN', documentation: 'DOCUMENTACIÓN',
@@ -380,18 +390,25 @@ function ReferenceKeyPanel({ item, answerKey, dirty, onChange, onSave, saving, r
             onChange={(e) => onChange(e.target.value)}
             placeholder={'1. Question…\n   → Correct answer\n\n2. Question…\n   → Correct answer'}
             rows={16}
-            className="w-full px-3 py-2 bg-papel border border-linea font-mono text-[12px] text-tinta focus:outline-none focus:border-marino resize-y"
+            disabled={correcting}
+            className="w-full px-3 py-2 bg-papel border border-linea font-mono text-[12px] text-tinta focus:outline-none focus:border-marino resize-y disabled:opacity-60 disabled:cursor-not-allowed"
           />
+          {/* T5 · Bloqueo mientras hay una corrección OCR en vuelo. */}
+          {correcting && (
+            <div className="mt-1 font-mono text-[10px] text-[#7A5A1E]">
+              La clave está bloqueada mientras se corrige la foto del alumno actual.
+            </div>
+          )}
           <div className="mt-2 flex items-center gap-2">
             <Button
               onClick={onSave}
               loading={saving}
-              disabled={!dirty}
+              disabled={!dirty || correcting}
               variant={ready ? 'ghost' : 'primary'}
             >
               {ready ? 'Guardar cambios' : 'Validar corrección de referencia'}
             </Button>
-            {ready && !dirty && (
+            {ready && !dirty && !correcting && (
               <span className="font-mono text-[10px] text-marron-soft">
                 Las próximas fotos se corregirán contra esta clave.
               </span>
@@ -707,26 +724,46 @@ function ResultView({
         </Card>
       )}
 
-      {/* B5 — Visto bueno + puntuación final del profe */}
+      {/* B5 — Visto bueno + puntuación final del profe (T6 + T8) */}
       <Card className="p-4">
         <SectionLabel className="mb-2">PUNTUACIÓN FINAL DEL PROFESOR</SectionLabel>
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-1">
-            <input
-              type="number"
-              value={finalScoreOverride}
-              onChange={(e) => setFinalScoreOverride(e.target.value)}
-              min={0}
-              max={result.maxScore}
-              step="0.25"
-              className="w-20 px-3 py-1.5 bg-papel border border-linea font-mono text-[13px] text-tinta focus:outline-none focus:border-marino"
-            />
-            <span className="font-mono text-[12px] text-marron-soft">/ {result.maxScore}</span>
-          </div>
-          <Button onClick={() => approve.mutate()} loading={approve.isPending} disabled={result.approvedAt}>
-            {result.approvedAt ? '✓ Visto bueno dado' : 'Dar visto bueno'}
-          </Button>
-        </div>
+        {(() => {
+          const rawScore = finalScoreOverride;
+          const parsedScore = Number(rawScore);
+          const scoreInvalid =
+            rawScore === '' || rawScore === null ||
+            Number.isNaN(parsedScore) ||
+            parsedScore < 0 ||
+            parsedScore > result.maxScore;
+          return (
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={finalScoreOverride}
+                  onChange={(e) => setFinalScoreOverride(e.target.value)}
+                  min={0}
+                  max={result.maxScore}
+                  step="0.25"
+                  className="w-20 px-3 py-1.5 bg-papel border border-linea font-mono text-[13px] text-tinta focus:outline-none focus:border-marino"
+                />
+                <span className="font-mono text-[12px] text-marron-soft">/ {result.maxScore}</span>
+              </div>
+              <Button
+                onClick={() => approve.mutate()}
+                loading={approve.isPending}
+                disabled={scoreInvalid}
+              >
+                {result.approvedAt ? 'Re-guardar visto bueno' : 'Dar visto bueno'}
+              </Button>
+              {scoreInvalid && (
+                <span className="font-mono text-[10px] text-granate">
+                  Nota entre 0 y {result.maxScore}.
+                </span>
+              )}
+            </div>
+          );
+        })()}
       </Card>
 
       <div className="flex flex-wrap gap-3">

@@ -88,7 +88,7 @@ export default function InstitutionalUsers() {
       )}
 
       {!isLoading && (
-        <div className="bg-card-bg border border-linea shadow-card">
+        <div className="bg-card-bg border border-linea shadow-card overflow-x-auto">
           <table className="vg-table">
             <thead>
               <tr>
@@ -374,13 +374,20 @@ function UserModulesModal({ target, orgId, onClose }) {
     [userData]
   );
 
+  // T9 · Invalidamos la vista de módulos del profesor + la lista de usuarios
+  // del centro. Si en el futuro el listado muestra un contador de módulos
+  // asignados, ya se refresca sin cambios adicionales.
+  const invalidateUserModules = () => {
+    qc.invalidateQueries({ queryKey: ['modules', 'user', target.id] });
+    qc.invalidateQueries({ queryKey: ['org-users'] });
+  };
   const assignMut = useMutation({
     mutationFn: (moduleId) => modulesApi.assignUserModule(target.id, moduleId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['modules', 'user', target.id] }),
+    onSuccess: invalidateUserModules,
   });
   const unassignMut = useMutation({
     mutationFn: (moduleId) => modulesApi.unassignUserModule(target.id, moduleId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['modules', 'user', target.id] }),
+    onSuccess: invalidateUserModules,
   });
 
   const handleToggle = (moduleId, on) => {

@@ -96,11 +96,25 @@ export function Modal({ open, onClose, title, children, footer }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-tinta/50" onClick={onClose} />
-      <div className="relative bg-papel border border-linea shadow-card-hover w-full max-w-xl animate-slide-in rounded-t-2xl sm:rounded-2xl overflow-hidden max-h-[90vh] flex flex-col">
+      <div className="absolute inset-0 bg-tinta/50" onClick={onClose} aria-hidden="true" />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="vg-modal-title"
+        className="relative bg-papel border border-linea shadow-card-hover w-full max-w-xl animate-slide-in rounded-t-2xl sm:rounded-2xl overflow-hidden max-h-[90vh] flex flex-col"
+      >
         <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-linea flex-shrink-0">
-          <h3 className="font-display text-[17px] sm:text-[20px] font-bold text-tinta truncate pr-2">{title}</h3>
-          <button onClick={onClose} className="text-marron-soft hover:text-tinta text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-papel-hover transition-colors flex-shrink-0">&times;</button>
+          <h3 id="vg-modal-title" className="font-display text-[17px] sm:text-[20px] font-bold text-tinta truncate pr-2">{title}</h3>
+          {/* T17 · aria-label explícito para screen readers; el "×" se marca
+              como decorativo con aria-hidden para que no lo lea como "times". */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar modal"
+            className="text-marron-soft hover:text-tinta text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-papel-hover transition-colors flex-shrink-0"
+          >
+            <span aria-hidden="true">&times;</span>
+          </button>
         </div>
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">{children}</div>
         {footer && <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-linea flex flex-wrap justify-end gap-2 sm:gap-3 bg-card-bg flex-shrink-0">{footer}</div>}

@@ -44,6 +44,9 @@ export default function InstitutionalLayout() {
         activeModules: meData.activeModules,
       });
     }
+    // T18 · Disable INTENCIONADO: añadir `user` como dep provocaría un loop
+    // infinito (updateUser cambia user → effect re-run → updateUser → …).
+    // Solo queremos sincronizar cuando el backend devuelve datos frescos.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meData?.orgId, meData?.orgName]);
 

@@ -2,7 +2,7 @@ const express = require('express');
 const { authenticate, authorize, requireModuleActive } = require('../middleware/auth');
 const {
   getSyllabus,
-  createSection, updateSection, deleteSection,
+  createSection, updateSection, reorderSections, deleteSection,
   createItem, getItem, listItemCorrections, updateItem, deleteItem,
 } = require('../controllers/syllabusController');
 
@@ -24,6 +24,14 @@ router.post(
   authorize('admin_centro', 'profesor', 'superadmin'),
   requireModuleActive,
   createSection
+);
+// T4 · Reorden atómico de temas del temario en una transacción.
+router.patch(
+  '/modules/:moduleId/syllabus/reorder',
+  authenticate,
+  authorize('admin_centro', 'profesor', 'superadmin'),
+  requireModuleActive,
+  reorderSections
 );
 
 // Mutaciones sobre section/item: la autorización de scope (misma org) la hace

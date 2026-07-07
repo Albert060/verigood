@@ -26,36 +26,48 @@ export default function PresentationGenerator() {
   const [result, setResult] = useState(null);
   const [activeTab, setActiveTab] = useState('slides');
   const [savedId, setSavedId] = useState(null);
+  // T3 · Estados independientes para reintento con feedback real.
+  const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState(null);
   const fileRef = useRef();
 
-  // Auto-persistencia en biblioteca + link al syllabus_item cuando venimos
-  // desde el Temario Cambridge. Best-effort.
   const linkToSyllabus = async (presentation) => {
+    if (linking) return; // T3 · previene doble-lanzamiento
+    setLinking(true);
+    setLinkError(null);
+    let libraryItemId = savedId;
     try {
-      const title = `Presentación Cambridge ${form.level[0]}${topicFromUrl ? ` — ${topicFromUrl}` : ''}`.slice(0, 255);
-      const { data: created } = await libraryApi.create({
-        moduleId: 'cambridge',
-        toolKey: 'cambridge:presentation',
-        kind: 'text',
-        title,
-        payload: presentation,
-        metadata: {
-          level: form.level[0],
-          topic: topicFromUrl || '',
-          slideCount: form.slideCount[0],
-          outputTypes: form.outputTypes,
-          autoSaved: true,
-        },
-      });
-      setSavedId(created.id);
-      qc.invalidateQueries({ queryKey: ['library'] });
+      if (!libraryItemId) {
+        const title = `Presentación Cambridge ${form.level[0]}${topicFromUrl ? ` — ${topicFromUrl}` : ''}`.slice(0, 255);
+        const { data: created } = await libraryApi.create({
+          moduleId: 'cambridge',
+          toolKey: 'cambridge:presentation',
+          kind: 'text',
+          title,
+          payload: presentation,
+          metadata: {
+            level: form.level[0],
+            topic: topicFromUrl || '',
+            slideCount: form.slideCount[0],
+            outputTypes: form.outputTypes,
+            autoSaved: true,
+          },
+        });
+        libraryItemId = created.id;
+        setSavedId(libraryItemId);
+        qc.invalidateQueries({ queryKey: ['library'] });
+      }
       if (syllabusItemId) {
-        await syllabusApi.updateItem(syllabusItemId, { library_item_id: created.id });
+        await syllabusApi.updateItem(syllabusItemId, { library_item_id: libraryItemId });
         qc.invalidateQueries({ queryKey: ['syllabus'] });
         qc.invalidateQueries({ queryKey: ['syllabus-item', syllabusItemId] });
       }
     } catch (err) {
-      console.warn('Cambridge presentation auto-save/link failed (non-fatal):', err.message);
+      const msg = err?.response?.data?.error || err.message || 'Error al vincular con el temario';
+      console.warn('Cambridge presentation auto-save/link failed:', msg);
+      setLinkError(msg);
+    } finally {
+      setLinking(false);
     }
   };
 
@@ -184,16 +196,30 @@ export default function PresentationGenerator() {
 
           {result && (
             <div>
-              {/* Estado del auto-guardado */}
-              <div className="mb-3 flex items-center gap-2 font-mono text-[11px]">
-                {savedId ? (
-                  <span className="px-2 py-0.5 border border-[#7DC49B] bg-[#EBF5EF] text-[#1A5C35]">
-                    ✓ Guardado en biblioteca{syllabusItemId ? ' · vinculado al temario' : ''}
-                  </span>
-                ) : (
+              {/* T3 · Estado real del auto-guardado + link. */}
+              <div className="mb-3 flex items-center gap-2 flex-wrap font-mono text-[11px]">
+                {linking && (
                   <span className="px-2 py-0.5 border border-linea text-marron-soft">
                     Guardando…
                   </span>
+                )}
+                {!linking && savedId && !linkError && (
+                  <span className="px-2 py-0.5 border border-[#7DC49B] bg-[#EBF5EF] text-[#1A5C35]">
+                    ✓ Guardado en biblioteca{syllabusItemId ? ' · vinculado al temario' : ''}
+                  </span>
+                )}
+                {!linking && linkError && (
+                  <>
+                    <span className="px-2 py-0.5 border border-granate bg-[#FCF0F0] text-granate">
+                      ✗ {savedId ? 'Guardado pero sin vincular' : 'Error al guardar'}: {linkError}
+                    </span>
+                    <button
+                      onClick={() => linkToSyllabus(result)}
+                      className="px-2 py-0.5 border border-marino text-marino hover:bg-marino hover:text-papel transition-colors"
+                    >
+                      Reintentar
+                    </button>
+                  </>
                 )}
               </div>
               {/* Tabs */}

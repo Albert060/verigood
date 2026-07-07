@@ -132,6 +132,7 @@ export const modulesApi = {
 export const syllabusApi = {
   get:              (moduleId) => api.get(`/modules/${moduleId}/syllabus`),
   createSection:    (moduleId, data) => api.post(`/modules/${moduleId}/syllabus/sections`, data),
+  reorderSections:  (moduleId, sectionIds) => api.patch(`/modules/${moduleId}/syllabus/reorder`, { sectionIds }),
   updateSection:    (sectionId, data) => api.patch(`/syllabus/sections/${sectionId}`, data),
   deleteSection:    (sectionId) => api.delete(`/syllabus/sections/${sectionId}`),
   createItem:       (sectionId, data) => api.post(`/syllabus/sections/${sectionId}/items`, data),
