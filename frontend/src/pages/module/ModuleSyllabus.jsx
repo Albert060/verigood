@@ -392,6 +392,11 @@ function TemaCard({
 
 function ItemRow({ item, onOpen, onRename, onDelete, onCorrect, ocrEnabled }) {
   const linked = !!item.library_item_id;
+  // El botón "Corregir" aparece en TODOS los items del temario cuando el
+  // módulo tiene OCR habilitado. El profesor puede corregir trabajos del
+  // alumno derivados de cualquier tipo de actividad (ejercicio, examen,
+  // dinámica, presentación o documentación), esté ya generado en la app o no.
+  const canCorrect = ocrEnabled;
   return (
     <div className={`flex items-center justify-between gap-3 px-3 py-2 border ${linked ? 'border-linea bg-papel' : 'border-dashed border-linea'}`}>
       <button onClick={onOpen} className="flex items-center gap-2 flex-1 text-left min-w-0">
@@ -399,12 +404,14 @@ function ItemRow({ item, onOpen, onRename, onDelete, onCorrect, ocrEnabled }) {
           {KIND_LABEL[item.kind] || item.kind}
         </Badge>
         <span className="text-[13px] text-tinta truncate" title={item.title}>{item.title}</span>
-        {!linked && (
+        {linked ? (
+          <span className="font-mono text-[9px] text-[#1A5C35] flex-shrink-0">· generado</span>
+        ) : (
           <span className="font-mono text-[9px] text-marron-soft flex-shrink-0">· pulsa para generar</span>
         )}
       </button>
       <div className="flex items-center gap-1 flex-shrink-0">
-        {(item.kind === 'exercise' || item.kind === 'exam') && ocrEnabled && (
+        {canCorrect && (
           <button
             onClick={onCorrect}
             className="font-mono text-[10px] px-2 py-1 border border-marino text-marino hover:bg-marino hover:text-papel transition-colors"

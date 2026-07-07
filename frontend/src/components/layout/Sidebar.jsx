@@ -67,15 +67,20 @@ export default function Sidebar({ children }) {
 
       <aside
         className={[
-          // Desktop / tablet: sticky, en flujo normal.
-          'md:w-[260px] md:flex-shrink-0 md:sticky md:top-16 md:self-start',
-          'md:min-h-[calc(100vh-4rem)] md:max-h-[calc(100vh-4rem)] md:overflow-y-auto',
-          'md:translate-x-0',
-          // Móvil: drawer fijo, sale de la izquierda.
-          'fixed md:static z-40 top-16 left-0 w-[80vw] max-w-[300px] h-[calc(100vh-4rem)]',
-          'overflow-y-auto',
-          'bg-sidebar-bg border-r border-linea py-3 transition-transform duration-200 ease-out',
-          isOpen ? 'translate-x-0 shadow-card-hover' : '-translate-x-full md:translate-x-0',
+          // Común (aplica en ambos breakpoints)
+          'bg-sidebar-bg border-r border-linea py-3 overflow-y-auto',
+          // MÓVIL (< md): drawer fijo bajo la Topbar. z-30 para quedar sobre
+          // el contenido pero por debajo de la Topbar (que es z-40). Se mueve
+          // con translate-x según isOpen. Usamos max-md: para NO aplicar en
+          // md+ y evitar cualquier conflicto de `position`.
+          'max-md:fixed max-md:top-16 max-md:left-0 max-md:z-30',
+          'max-md:w-[80vw] max-md:max-w-[300px] max-md:h-[calc(100vh-4rem)]',
+          'max-md:transition-transform max-md:duration-200 max-md:ease-out',
+          isOpen ? 'max-md:translate-x-0 max-md:shadow-card-hover' : 'max-md:-translate-x-full',
+          // DESKTOP / TABLET (md+): sticky en el flujo del flex row, siempre
+          // debajo de la Topbar y por delante del contenido pero sin superponerse.
+          'md:sticky md:top-16 md:z-10 md:self-start md:flex-shrink-0',
+          'md:w-[260px] md:min-h-[calc(100vh-4rem)] md:max-h-[calc(100vh-4rem)]',
         ].join(' ')}
       >
         {children}

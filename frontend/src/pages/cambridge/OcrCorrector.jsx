@@ -57,6 +57,18 @@ export default function OcrCorrector() {
       : '';
     setAnswerKey(fromMetadata || fromLibrary || '');
     setAnswerKeyDirty(false);
+
+    // Autoprecarga de la certificación desde el level del payload/metadata.
+    // Cambridge guarda 'B1', 'A2', … y el selector espera 'PET B1' etc.
+    // Mapa nivel → certificación estándar.
+    const LEVEL_TO_CERT = {
+      A2: 'KET A2', B1: 'PET B1', B2: 'FCE B2', C1: 'CAE C1', C2: 'CPE C2',
+    };
+    const lvl = item.library_payload?.level || item.metadata?.level;
+    if (lvl && LEVEL_TO_CERT[lvl]) {
+      setForm((f) => ({ ...f, certification: LEVEL_TO_CERT[lvl] }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item]);
 
   const saveAnswerKey = useMutation({
@@ -258,20 +270,84 @@ export default function OcrCorrector() {
 
 // ── Helpers ─────────────────────────────────────────────────────
 
+// Deriva un borrador de referencia a partir del payload del library item.
+// Cubre todos los output_kind (ejercicio, examen, presentación, dinámica,
+// documentación, rúbrica, timeline, texto plano). Sin datos → JSON legible.
 function seedAnswerKeyFromPayload(payload) {
-  const list = payload?.exercises || payload?.questions || [];
-  if (!Array.isArray(list) || list.length === 0) return '';
-  return list.map((q, i) => {
-    const n = q.number || (i + 1);
-    const prompt = q.question || q.prompt || q.title || `Question ${n}`;
-    const answer = q.answer || q.correctAnswer || '';
-    return `${n}. ${prompt}\n   → ${answer}`;
-  }).join('\n\n');
+  if (!payload) return '';
+  if (typeof payload === 'string') return payload;
+
+  // Ejercicios / exámenes / cuestionarios.
+  const list = payload.exercises || payload.questions;
+  if (Array.isArray(list) && list.length > 0) {
+    return list.map((q, i) => {
+      const n = q.number || (i + 1);
+      const prompt = q.question || q.prompt || q.title || `Question ${n}`;
+      const answer = q.answer || q.correctAnswer || '';
+      return `${n}. ${prompt}\n   → ${answer}`;
+    }).join('\n\n');
+  }
+
+  // Presentaciones (slides).
+  if (Array.isArray(payload.slides) && payload.slides.length > 0) {
+    return payload.slides.map((s, i) => {
+      const title = s.title || `Slide ${i + 1}`;
+      const bullets = Array.isArray(s.bullets) ? s.bullets.map((b) => `   · ${b}`).join('\n') : '';
+      return `${i + 1}. ${title}${bullets ? '\n' + bullets : ''}`;
+    }).join('\n\n');
+  }
+
+  // Dinámicas (instrucciones).
+  if (Array.isArray(payload.instructions) && payload.instructions.length > 0) {
+    const header = payload.title || 'Dinámica';
+    const desc = payload.description ? `\n${payload.description}\n` : '';
+    const inst = payload.instructions.map((s, i) => `${i + 1}. ${s}`).join('\n');
+    return `${header}${desc}\nInstrucciones:\n${inst}`;
+  }
+
+  // Rúbricas.
+  if (Array.isArray(payload.criteria) && payload.criteria.length > 0) {
+    return payload.criteria.map((c, i) => {
+      const name = c.name || c.title || `Criterio ${i + 1}`;
+      const desc = c.description || c.desc || '';
+      return `${i + 1}. ${name}${desc ? `\n   ${desc}` : ''}`;
+    }).join('\n\n');
+  }
+
+  // Timelines.
+  if (Array.isArray(payload.events) && payload.events.length > 0) {
+    return payload.events.map((e, i) => {
+      const when = e.year || e.date || (i + 1);
+      const title = e.title || e.name || '';
+      const desc = e.description || e.desc || '';
+      return `${when}. ${title}${desc ? ` — ${desc}` : ''}`;
+    }).join('\n');
+  }
+
+  // Textos.
+  if (typeof payload.text === 'string' && payload.text.trim())      return payload.text;
+  if (typeof payload.content === 'string' && payload.content.trim()) return payload.content;
+  if (typeof payload.markdown === 'string' && payload.markdown.trim()) return payload.markdown;
+  if (typeof payload.summary === 'string' && payload.summary.trim())  return payload.summary;
+
+  // Último recurso: JSON legible que el profe puede editar a mano.
+  try {
+    return JSON.stringify(payload, null, 2);
+  } catch {
+    return '';
+  }
 }
 
 // ── Subcomponentes ──────────────────────────────────────────────
 
 function ReferenceKeyPanel({ item, answerKey, dirty, onChange, onSave, saving, ready }) {
+  const KIND_LABEL = {
+    exercise: 'EJERCICIO', exam: 'EXAMEN', dynamic: 'DINÁMICA',
+    presentation: 'PRESENTACIÓN', documentation: 'DOCUMENTACIÓN',
+  };
+  const kindLabel = KIND_LABEL[item?.kind] || 'ACTIVIDAD';
+  const kindLower = kindLabel.toLowerCase();
+
   return (
     <div>
       <div className="mb-3 flex items-center gap-2">
@@ -280,18 +356,18 @@ function ReferenceKeyPanel({ item, answerKey, dirty, onChange, onSave, saving, r
       </div>
 
       {!item && (
-        <div className="font-mono text-[11px] text-marron-soft">Cargando ejercicio del temario…</div>
+        <div className="font-mono text-[11px] text-marron-soft">Cargando actividad del temario…</div>
       )}
 
       {item && (
         <>
           <div className="mb-3 border border-linea bg-card-bg p-3">
-            <div className="font-mono text-[10px] text-marron-soft mb-1">EJERCICIO</div>
+            <div className="font-mono text-[10px] text-marron-soft mb-1">{kindLabel}</div>
             <div className="text-[13px] text-tinta font-medium">{item.title}</div>
             {item.library_item_id && (
               <Link to={`/dashboard/resources/${item.library_item_id}`}
                     className="font-mono text-[10px] text-marino hover:text-granate transition-colors">
-                Ver ejercicio original →
+                Ver {kindLower} original →
               </Link>
             )}
           </div>

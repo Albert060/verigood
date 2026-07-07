@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { cambridgeApi } from '../../services/api';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import { cambridgeApi, libraryApi, syllabusApi } from '../../services/api';
 import { PageHeader, Button, TagCloud, SectionLabel } from '../../components/ui';
 import DownloadPdfButton from '../../components/ui/DownloadPdfButton';
 
@@ -13,13 +14,50 @@ const OUTPUT_TYPES = [
 const SLIDE_COUNTS = [5, 8, 10, 12, 15].map((n) => ({ value: n, label: `${n} slides` }));
 
 export default function PresentationGenerator() {
+  const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const syllabusItemId = searchParams.get('syllabusItemId');
+  const topicFromUrl   = searchParams.get('topic');
+
   const [sourceType, setSourceType] = useState('text'); // 'text' | 'pdf'
-  const [text, setText] = useState('');
+  const [text, setText] = useState(topicFromUrl ? `Tema: ${topicFromUrl}\n\n` : '');
   const [file, setFile] = useState(null);
   const [form, setForm] = useState({ level: ['B1'], slideCount: [10], outputTypes: ['slides', 'notebooklm'] });
   const [result, setResult] = useState(null);
   const [activeTab, setActiveTab] = useState('slides');
+  const [savedId, setSavedId] = useState(null);
   const fileRef = useRef();
+
+  // Auto-persistencia en biblioteca + link al syllabus_item cuando venimos
+  // desde el Temario Cambridge. Best-effort.
+  const linkToSyllabus = async (presentation) => {
+    try {
+      const title = `Presentación Cambridge ${form.level[0]}${topicFromUrl ? ` — ${topicFromUrl}` : ''}`.slice(0, 255);
+      const { data: created } = await libraryApi.create({
+        moduleId: 'cambridge',
+        toolKey: 'cambridge:presentation',
+        kind: 'text',
+        title,
+        payload: presentation,
+        metadata: {
+          level: form.level[0],
+          topic: topicFromUrl || '',
+          slideCount: form.slideCount[0],
+          outputTypes: form.outputTypes,
+          autoSaved: true,
+        },
+      });
+      setSavedId(created.id);
+      qc.invalidateQueries({ queryKey: ['library'] });
+      if (syllabusItemId) {
+        await syllabusApi.updateItem(syllabusItemId, { library_item_id: created.id });
+        qc.invalidateQueries({ queryKey: ['syllabus'] });
+        qc.invalidateQueries({ queryKey: ['syllabus-item', syllabusItemId] });
+      }
+    } catch (err) {
+      console.warn('Cambridge presentation auto-save/link failed (non-fatal):', err.message);
+    }
+  };
 
   const { mutate, isPending } = useMutation({
     mutationFn: () => {
@@ -34,6 +72,7 @@ export default function PresentationGenerator() {
     onSuccess: (res) => {
       setResult(res.data);
       setActiveTab(form.outputTypes[0] || 'slides');
+      linkToSyllabus(res.data);
     },
   });
 
@@ -145,6 +184,18 @@ export default function PresentationGenerator() {
 
           {result && (
             <div>
+              {/* Estado del auto-guardado */}
+              <div className="mb-3 flex items-center gap-2 font-mono text-[11px]">
+                {savedId ? (
+                  <span className="px-2 py-0.5 border border-[#7DC49B] bg-[#EBF5EF] text-[#1A5C35]">
+                    ✓ Guardado en biblioteca{syllabusItemId ? ' · vinculado al temario' : ''}
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 border border-linea text-marron-soft">
+                    Guardando…
+                  </span>
+                )}
+              </div>
               {/* Tabs */}
               <div className="flex border-b border-linea mb-4">
                 {OUTPUT_TYPES.filter((t) => form.outputTypes.includes(t.value)).map((t) => (

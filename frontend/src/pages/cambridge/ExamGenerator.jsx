@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { cambridgeApi } from '../../services/api';
+import { useSearchParams } from 'react-router-dom';
+import { cambridgeApi, libraryApi, syllabusApi } from '../../services/api';
 import { PageHeader, Button, Select, TagCloud, SectionLabel } from '../../components/ui';
 import DownloadPdfButton from '../../components/ui/DownloadPdfButton';
 
@@ -20,9 +21,64 @@ const STEPS = ['Nivel', 'Tema', 'Ejercicios', 'Resultado'];
 
 export default function ExamGenerator() {
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  // Cuando llega desde el Temario Cambridge (?syllabusItemId=X&topic=Y).
+  const syllabusItemId = searchParams.get('syllabusItemId');
+  const topicFromUrl   = searchParams.get('topic');
+
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState({ level: 'B1', topic: '', exerciseTypes: ['multiple_choice', 'fill_blanks'], totalQuestions: 15, source: 'hybrid' });
+  const [form, setForm] = useState({
+    level: 'B1',
+    topic: topicFromUrl || '',
+    exerciseTypes: ['multiple_choice', 'fill_blanks'],
+    totalQuestions: 15,
+    source: 'hybrid',
+  });
   const [result, setResult] = useState(null);
+  const [savedId, setSavedId] = useState(null);
+
+  // Al llegar con ?topic=... precargamos el campo de tema del formulario.
+  useEffect(() => {
+    if (topicFromUrl && !form.topic) {
+      setForm((f) => ({ ...f, topic: topicFromUrl }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topicFromUrl]);
+
+  // Auto-persistencia del examen generado en la biblioteca del centro y —
+  // si venimos del Temario — link automático al syllabus_item para que la
+  // casilla del temario deje de estar "por generar" y pase a "generado"
+  // (badge verde CONTRATADO/EXAMEN + botón Corregir). Best-effort: si algo
+  // falla, seguimos mostrando el resultado al usuario.
+  const linkToSyllabus = async (exam) => {
+    try {
+      const title = `Examen Cambridge ${exam.level}${exam.topic ? ` — ${exam.topic}` : ''}`.slice(0, 255);
+      const { data: created } = await libraryApi.create({
+        moduleId: 'cambridge',
+        toolKey: 'cambridge:exam',
+        kind: 'exam',
+        title,
+        payload: exam,
+        metadata: {
+          level: exam.level,
+          topic: exam.topic || '',
+          totalQuestions: exam.totalQuestions,
+          exerciseTypes: form.exerciseTypes,
+          source: form.source,
+          autoSaved: true,
+        },
+      });
+      setSavedId(created.id);
+      qc.invalidateQueries({ queryKey: ['library'] });
+      if (syllabusItemId) {
+        await syllabusApi.updateItem(syllabusItemId, { library_item_id: created.id });
+        qc.invalidateQueries({ queryKey: ['syllabus'] });
+        qc.invalidateQueries({ queryKey: ['syllabus-item', syllabusItemId] });
+      }
+    } catch (err) {
+      console.warn('Cambridge exam auto-save/link failed (non-fatal):', err.message);
+    }
+  };
 
   const { mutate, isPending } = useMutation({
     mutationFn: () => cambridgeApi.generateExam(form),
@@ -35,6 +91,8 @@ export default function ExamGenerator() {
       qc.invalidateQueries({ queryKey: ['org-stats'] });
       qc.invalidateQueries({ queryKey: ['cambridge-exams'] });
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
+      // Auto-guarda y linkea al temario (si aplica). No await — que corra en background.
+      linkToSyllabus(res.data);
     },
   });
 
@@ -201,6 +259,20 @@ export default function ExamGenerator() {
             )}
           </div>
 
+          {/* Estado del guardado — el examen se persiste solo en biblioteca
+              (y se linkea al temario si veníamos desde ahí). */}
+          <div className="mb-3 flex items-center gap-2 font-mono text-[11px]">
+            {savedId ? (
+              <span className="px-2 py-0.5 border border-[#7DC49B] bg-[#EBF5EF] text-[#1A5C35]">
+                ✓ Guardado en biblioteca{syllabusItemId ? ' · vinculado al temario' : ''}
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 border border-linea text-marron-soft">
+                Guardando…
+              </span>
+            )}
+          </div>
+
           <div className="flex flex-wrap gap-3">
             <DownloadPdfButton
               type="exam"
@@ -211,22 +283,7 @@ export default function ExamGenerator() {
               filename={`cambridge-${result.level}-${Date.now()}`}
               size="lg"
             />
-            <Button
-              variant="ghost"
-              onClick={async () => {
-                try {
-                  await cambridgeApi.saveExam({ exam: result });
-                  qc.invalidateQueries({ queryKey: ['cambridge-exams'] });
-                  qc.invalidateQueries({ queryKey: ['org-stats'] });
-                  qc.invalidateQueries({ queryKey: ['notifications-unread'] });
-                } catch (e) {
-                  console.error('saveExam falló', e);
-                }
-              }}
-            >
-              Guardar examen
-            </Button>
-            <Button variant="ghost" onClick={() => { setStep(0); setResult(null); }}>
+            <Button variant="ghost" onClick={() => { setStep(0); setResult(null); setSavedId(null); }}>
               Nuevo examen
             </Button>
           </div>
