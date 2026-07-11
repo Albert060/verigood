@@ -44,7 +44,8 @@
       "Bash(node -e \"require\\('./backend/src/controllers/moduleToolsController'\\); console.log\\('OK backend'\\);\")",
       "Bash(xargs grep -l \"grid grid-cols\")",
       "Bash(sed -i '236s/\"grid grid-cols-2 gap-5\"/\"grid grid-cols-1 md:grid-cols-2 gap-5\"/' frontend/src/pages/module/ModuleOcrPage.jsx)",
-      "Bash(sed -i '175s/\"grid grid-cols-2 gap-5\"/\"grid grid-cols-1 md:grid-cols-2 gap-5\"/' frontend/src/pages/cambridge/OcrCorrector.jsx)"
+      "Bash(sed -i '175s/\"grid grid-cols-2 gap-5\"/\"grid grid-cols-1 md:grid-cols-2 gap-5\"/' frontend/src/pages/cambridge/OcrCorrector.jsx)",
+      "Bash(npm audit *)"
     ]
   }
 }
